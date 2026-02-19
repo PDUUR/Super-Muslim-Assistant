@@ -1,0 +1,29 @@
+{
+  "name": "app-islami",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.97.0",
+    "axios": "^1.6.7",
+    "firebase": "^12.9.0",
+    "kaboom": "^3000.1.17",
+    "moment": "^2.30.1",
+    "moment-timezone": "^0.6.0",
+    "pinia": "^2.3.1",
+    "vue": "^3.4.15",
+    "vue-router": "^4.2.5"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^5.0.3",
+    "autoprefixer": "^10.4.17",
+    "postcss": "^8.4.35",
+    "tailwindcss": "^3.4.1",
+    "vite": "^5.0.11"
+  }
+}

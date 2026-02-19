@@ -1,0 +1,57 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper: Cek apakah user adalah admin
+    function isAdmin() {
+      return request.auth != null && 
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    // Helper: Cek apakah user tidak diblokir/dihapus
+    function isNotRestricted() {
+      let userData = get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+      return userData.is_blocked != true && userData.deleted_at == null;
+    }
+
+    // KUMPULAN USERS
+    match /users/{userId} {
+      // User boleh baca/tulis datanya sendiri (asal tidak dibatasi)
+      // Admin boleh baca/tulis SEMUA data user
+      allow read, write: if (request.auth != null && request.auth.uid == userId && (isNotRestricted() || isAdmin())) || isAdmin();
+      
+      // Private data (logs, etc)
+      match /private_data/{docId} {
+        allow read, write: if (request.auth != null && request.auth.uid == userId && (isNotRestricted() || isAdmin())) || isAdmin();
+      }
+    }
+
+    // KUMPULAN MESSAGES
+    match /messages/{messageId} {
+      allow read: if true;
+      allow create: if request.auth != null && isNotRestricted();
+      allow delete, update: if isAdmin();
+    }
+
+    // COMMUNITIES
+    match /communities/{communityId} {
+      allow read: if (resource == null) || (resource.data.is_private != true) || (request.auth != null && (request.auth.uid in resource.data.member_ids || isAdmin()));
+      allow create: if isAdmin(); 
+      allow update: if isAdmin() || (request.auth != null && request.auth.uid in resource.data.member_ids);
+      allow delete: if isAdmin() || (request.auth != null && resource.data.created_by == request.auth.uid);
+      
+      match /messages/{msgId} {
+        allow read: if true;
+        allow create: if request.auth != null && isNotRestricted();
+        allow delete: if isAdmin();
+      }
+    }
+
+    // COMMUNITY REQUESTS
+    match /community_requests/{reqId} {
+      allow read: if isAdmin();
+      allow create: if request.auth != null && isNotRestricted();
+      allow update, delete: if isAdmin();
+    }
+  }
+}
