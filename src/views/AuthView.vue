@@ -98,7 +98,7 @@
         </form>
 
         <div v-if="isLogin" class="mt-6 text-center">
-          <a href="#" class="text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-green-600 transition-colors">Lupa Password?</a>
+          <button @click="handleForgotPassword" class="text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-green-600 transition-colors">Lupa Password?</button>
         </div>
 
         <!-- Social Login Divider -->
@@ -207,6 +207,21 @@ const handleSubmit = async () => {
 };
 const handleGoogleLogin = () => {
     alert("Fitur Login Google membutuhkan Konfigurasi Google Cloud Console (Client ID).\n\nUntuk tahap pengembangan ini, silakan gunakan form pendaftaran manual di atas.");
+};
+
+const handleForgotPassword = async () => {
+    const email = prompt('Masukkan email Anda untuk reset password:');
+    if (!email) return;
+
+    loading.value = true;
+    try {
+        await authStore.resetPassword(email);
+        alert('Email reset password telah dikirim ke ' + email + '. Silakan cek inbox (dan folder spam) Anda.');
+    } catch (err) {
+        alert('Gagal mengirim email reset: ' + err.message);
+    } finally {
+        loading.value = false;
+    }
 };
 </script>
 

@@ -19,6 +19,7 @@ import { auth, db } from '@/firebase/config'
 import {
     signInWithEmailAndPassword,
     createUserWithEmailAndPassword,
+    sendPasswordResetEmail,
     signOut,
     onAuthStateChanged
 } from 'firebase/auth'
@@ -289,6 +290,24 @@ export const useAuthStore = defineStore('auth', () => {
     }
 
     /**
+     * Reset Password (Firebase)
+     */
+    const resetPassword = async (email) => {
+        isLoading.value = true
+        error.value = null
+        try {
+            await sendPasswordResetEmail(auth, email)
+            return { status: 'success' }
+        } catch (err) {
+            console.error('[Auth] Reset password error:', err)
+            error.value = err.message || 'Gagal mengirim email reset.'
+            throw err
+        } finally {
+            isLoading.value = false
+        }
+    }
+
+    /**
      * Refresh Profile (Manual fetch jika perlu)
      */
     const refreshProfile = async () => {
@@ -315,5 +334,6 @@ export const useAuthStore = defineStore('auth', () => {
         logout,
         updateProfile,
         refreshProfile,
+        resetPassword,
     }
 })
