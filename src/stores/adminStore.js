@@ -87,55 +87,28 @@ export const useAdminStore = defineStore('admin', () => {
         isLoading.value = true
 
         try {
-            // 1. Ambil Semua Users (untuk list & hitung poin)
-            const usersRef = collection(db, "users") // Ganti 'profiles' jadi 'users'
-            const q = query(usersRef, orderBy("total_points", "desc"))
-            const querySnapshot = await getDocs(q)
-
-            const fetchedUsers = []
-            let totalPoints = 0
-            const uniqueCities = new Set()
-
-            querySnapshot.forEach((doc) => {
-                const userData = doc.data()
-                fetchedUsers.push({ id: doc.id, ...userData })
-                totalPoints += (userData.total_points || 0)
-                if (userData.city_id) uniqueCities.add(userData.city_id)
-            })
-
-            users.value = fetchedUsers
-
-            // 2. Hitung Pesan dari semua Komunitas
-            // Karena Firestore tidak mendukung agregasi lintas sub-collection secara langsung dengan count,
-            // Kita ambil list komunitas dulu, lalu jumlahkan jika komunitas menyimpan msg_count.
-            // Jika tidak, kita hitung manual (limit permohonan untuk performa)
+            // Hitung Pesan dari semua Komunitas (Tetap manual fetch/polling karena murah)
             const communitiesRef = collection(db, "communities")
             const communitiesSnap = await getDocs(communitiesRef)
             let totalMessagesCount = 0
 
-            // Kita gunakan metadata komunitas jika ada, atau hitung 
             for (const communityDoc of communitiesSnap.docs) {
                 const cData = communityDoc.data()
-                // Jika kita punya field message_count di doc komunitas:
                 if (cData.message_count) {
                     totalMessagesCount += cData.message_count
                 } else {
-                    // Fallback: hitung sub-collection jika data sedikit
                     const msgRef = collection(db, "communities", communityDoc.id, "messages")
                     const msgSnap = await getCountFromServer(msgRef)
                     totalMessagesCount += msgSnap.data().count
                 }
             }
 
-            // 3. Update Stats (Replace entire object for deep reactivity)
             stats.value = {
-                total_users: fetchedUsers.length,
-                total_points_distributed: totalPoints,
-                total_active_cities: uniqueCities.size,
+                ...stats.value,
                 total_messages: totalMessagesCount
             }
 
-            console.log(`[Admin] ✅ Stats refreshed. Cities: ${uniqueCities.size}, Messages: ${totalMessagesCount}`)
+            console.log(`[Admin] ✅ Community stats refreshed. Messages: ${totalMessagesCount}`)
 
         } catch (err) {
             console.error('[Admin] ❌ Stats error:', err)
@@ -143,8 +116,6 @@ export const useAdminStore = defineStore('admin', () => {
         } finally {
             isLoading.value = false
         }
-
-
     }
 
     /**

@@ -160,6 +160,7 @@ export const useAuthStore = defineStore('auth', () => {
             }
 
             user.value = firebaseUser
+            await updateOnlineStatus(true)
             return { status: 'success', user: user.value }
 
         } catch (err) {
