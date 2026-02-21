@@ -37,8 +37,8 @@ const speechAccuracy = ref(null);
 let mediaRecorder = null;
 let audioChunks = [];
 
-// Ganti dengan Hugging Face Token Anda (Settings > Access Tokens)
-const HF_TOKEN = "hf_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"; // Masukkan token Anda di sini
+// Token diambil dari file .env untuk keamanan (VITE_HF_TOKEN)
+const HF_TOKEN = import.meta.env.VITE_HF_TOKEN; 
 
 // ─── Hint System ───────────────────────────────────────────────
 const showHint = ref(false);
