@@ -102,10 +102,17 @@
                      <i class="fas" :class="user.is_blocked ? 'fa-unlock' : 'fa-ban'"></i>
                    </button>
 
-                   <!-- Delete -->
+                   <!-- Soft Delete -->
                    <button v-if="!user.deleted_at" @click="handleDelete(user)"
-                           class="w-10 h-10 rounded-xl bg-slate-100 dark:bg-white/5 text-slate-500 hover:bg-rose-500 hover:text-white transition-all flex items-center justify-center"
-                           title="Delete User">
+                           class="w-10 h-10 rounded-xl bg-slate-100 dark:bg-white/5 text-slate-500 hover:bg-orange-500 hover:text-white transition-all flex items-center justify-center"
+                           title="Nonaktifkan User (Soft Delete)">
+                     <i class="fas fa-user-minus text-xs"></i>
+                   </button>
+
+                   <!-- Hard Delete Permanen -->
+                   <button @click="handleHardDelete(user)"
+                           class="w-10 h-10 rounded-xl bg-slate-100 dark:bg-white/5 text-rose-400 hover:bg-rose-600 hover:text-white transition-all flex items-center justify-center shadow-sm"
+                           title="Hapus Permanen (Firestore)">
                      <i class="fas fa-trash-alt text-xs"></i>
                    </button>
                 </div>
@@ -200,13 +207,65 @@ const handleToggleBlock = async (user) => {
 }
 
 const handleDelete = async (user) => {
-    if (!confirm(`⚠️ PERINGATAN: Yakin ingin MENGHAPUS (soft-delete) user ${user.display_name || user.username}?\n\nUser akan tetap ada di database tapi dianggap tidak aktif.`)) return
+    const result = await Swal.fire({
+        title: 'Nonaktifkan User?',
+        text: `User ${user.display_name || user.username} akan ditandai sebagai 'Deleted' & tidak bisa login.`,
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#f97316',
+        cancelButtonColor: '#94a3b8',
+        confirmButtonText: 'Ya, Nonaktifkan',
+        cancelButtonText: 'Batal'
+    })
 
-    try {
-        await adminStore.deleteUser(user.id)
-        alert('User berhasil dihapus')
-    } catch (err) {
-        alert('Gagal: ' + err.message)
+    if (result.isConfirmed) {
+        try {
+            await adminStore.deleteUser(user.id)
+            Swal.fire('Berhasil', 'User telah dinonaktifkan.', 'success')
+        } catch (err) {
+            Swal.fire('Gagal', err.message, 'error')
+        }
+    }
+}
+
+const handleHardDelete = async (user) => {
+    // Konfirmasi 1: SweetAlert
+    const result = await Swal.fire({
+        title: 'HAPUS PERMANEN?',
+        html: `Anda akan menghapus <b>${user.display_name || user.username}</b> dari Firestore.<br><small class="text-rose-500 font-bold">Tindakan ini tidak bisa dibatalkan!</small>`,
+        icon: 'error',
+        showCancelButton: true,
+        confirmButtonColor: '#e11d48',
+        cancelButtonColor: '#94a3b8',
+        confirmButtonText: 'Hapus Sekarang',
+        cancelButtonText: 'Batal'
+    })
+
+    if (result.isConfirmed) {
+        // Konfirmasi 2: Input manual untuk keamanan ekstra
+        const { value: confirmName } = await Swal.fire({
+            title: 'Konfirmasi Terakhir',
+            text: `Ketik "${user.display_name || user.username}" untuk menghapus:`,
+            input: 'text',
+            inputPlaceholder: 'Nama user...',
+            showCancelButton: true,
+            confirmButtonColor: '#e11d48',
+        })
+
+        if (confirmName === (user.display_name || user.username)) {
+            try {
+                await adminStore.hardDeleteUser(user.id)
+                Swal.fire({
+                    title: 'Terhapus!',
+                    text: 'Data Firestore user berhasil dihapus permanen. Catatan: User mungkin masih ada di Firebase Auth, silakan hapus manual di Console.',
+                    icon: 'success'
+                })
+            } catch (err) {
+                Swal.fire('Gagal', err.message, 'error')
+            }
+        } else if (confirmName !== undefined) {
+            Swal.fire('Gagal', 'Nama yang dimasukkan tidak cocok.', 'error')
+        }
     }
 }
 

@@ -17,10 +17,8 @@ import { useAuthStore } from './authStore'
 // FIREBASE IMPORTS
 import { db } from '@/firebase/config'
 import {
-    collection,
-    getDocs,
-    doc,
     updateDoc,
+    deleteDoc,
     query,
     orderBy,
     onSnapshot,
@@ -253,6 +251,32 @@ export const useAdminStore = defineStore('admin', () => {
     }
 
     /**
+     * Hard Delete User (Firestore Permanent Delete)
+     * Catatan: Untuk Firebase Auth, harus menggunakan Admin SDK / Cloud Functions.
+     * Kode ini menghapus data di Firestore secara permanen.
+     */
+    const hardDeleteUser = async (targetUserId) => {
+        if (!authStore.isAdmin) return
+
+        try {
+            const userRef = doc(db, "users", targetUserId)
+
+            // 1. Hapus dari Firestore
+            await deleteDoc(userRef)
+
+            console.log(`[Admin] User ${targetUserId} permanently deleted from Firestore`)
+
+            // 2. Refresh list (karena onSnapshot mungkin butuh waktu, kita force update local stats)
+            fetchStats()
+
+            return true
+        } catch (err) {
+            console.error('[Admin] ❌ Hard Delete error:', err)
+            throw err
+        }
+    }
+
+    /**
      * Community Request Actions
      */
     const fetchRequests = async () => {
@@ -395,6 +419,7 @@ export const useAdminStore = defineStore('admin', () => {
         toggleBlockUser,
         toggleBlockUser,
         deleteUser,
+        hardDeleteUser,
         communityRequests,
         fetchRequests,
         approveRequest,
