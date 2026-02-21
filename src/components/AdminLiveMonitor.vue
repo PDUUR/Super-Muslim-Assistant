@@ -154,14 +154,16 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted, onUnmounted } from 'vue';
-import { supabase } from '@/libs/supabase';
+import { useAdminStore } from '@/stores/adminStore';
+import { useAuthStore } from '@/stores/authStore';
 
-const liveUsers = ref([]);
-const loading = ref(false);
+const adminStore = useAdminStore();
+const authStore = useAuthStore();
+
+const liveUsers = computed(() => adminStore.users);
+const loading = computed(() => adminStore.isLoading);
 const saving = ref(false);
 const refreshCountdown = ref(15);
-let fetchInterval = null;
 let countdownInterval = null;
 
 const editModal = reactive({
@@ -172,63 +174,34 @@ const editModal = reactive({
 });
 
 // ── Stats Cards ──
-const statCards = computed(() => {
-  const total = liveUsers.value.length;
-  const totalXP = liveUsers.value.reduce((sum, u) => sum + (u.total_points || 0), 0);
-  const admins = liveUsers.value.filter(u => u.role === 'admin').length;
-  const avgLevel = total > 0 ? (liveUsers.value.reduce((sum, u) => sum + (u.level || 1), 0) / total).toFixed(1) : 0;
-  return [
-    { label: 'Total Users', value: total, color: '#10b981' },
-    { label: 'Total XP', value: totalXP.toLocaleString(), color: '#f59e0b' },
-    { label: 'Admins', value: admins, color: '#8b5cf6' },
-    { label: 'Avg Level', value: avgLevel, color: '#06b6d4' },
-  ];
-});
+const statCards = computed(() => adminStore.statsCards);
 
 // ── Fetch Functions ──
 const fetchLiveUsers = async () => {
-  loading.value = true;
-  try {
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('*')
-      .order('total_points', { ascending: false });
-
-    if (error) throw error;
-    liveUsers.value = data || [];
-  } catch (err) {
-    console.error('Admin fetch failed:', err);
-  } finally {
-    loading.value = false;
-    refreshCountdown.value = 15;
-  }
+  await adminStore.fetchStats();
+  refreshCountdown.value = 15;
 };
 
 // ── Edit XP ──
 const openEditXp = (user) => {
   editModal.user = user;
-  editModal.amount = 0;
+  editModal.amount = user.total_points || 0; // Initialize with current points
   editModal.reason = '';
   editModal.show = true;
 };
 
 const submitEditXp = async () => {
-  if (!editModal.amount) {
-    alert('Masukkan jumlah XP');
-    return;
-  }
   saving.value = true;
   try {
-    const { error } = await supabase.rpc('add_points', {
-      target_user_id: editModal.user.id,
-      amount: editModal.amount,
-      reason: editModal.reason || 'Admin adjustment',
-    });
-
-    if (error) throw error;
+    // Note: adminStore.editUserPoints in this codebase seems to set absolute points
+    await adminStore.editUserPoints(
+      editModal.user.id, 
+      editModal.amount, 
+      editModal.reason || 'Admin Adjustment'
+    );
     
     editModal.show = false;
-    await fetchLiveUsers();
+    // Realtime listener in adminStore will update the list
   } catch (err) {
     alert(err.message || 'Gagal mengubah XP');
   } finally {
@@ -250,16 +223,20 @@ const getLevelColor = (level) => {
 };
 
 // ── Lifecycle ──
-onMounted(() => {
-  fetchLiveUsers();
-  fetchInterval = setInterval(fetchLiveUsers, 15000);
-  countdownInterval = setInterval(() => {
-    refreshCountdown.value = Math.max(0, refreshCountdown.value - 1);
-  }, 1000);
+onMounted(async () => {
+  if (authStore.isAdmin) {
+    await adminStore.initialize();
+    countdownInterval = setInterval(() => {
+      refreshCountdown.value = Math.max(0, refreshCountdown.value - 1);
+      if (refreshCountdown.value === 0) {
+        fetchLiveUsers();
+      }
+    }, 1000);
+  }
 });
 
 onUnmounted(() => {
-  if (fetchInterval) clearInterval(fetchInterval);
+  adminStore.cleanup();
   if (countdownInterval) clearInterval(countdownInterval);
 });
 </script>

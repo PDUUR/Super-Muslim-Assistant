@@ -31,8 +31,7 @@ import {
     onSnapshot
 } from 'firebase/firestore'
 
-// SUPABASE IMPORTS (Non-aktif)
-// import { supabase } from '@/libs/supabase'
+
 
 export const useAuthStore = defineStore('auth', () => {
     // ===== STATE =====
@@ -71,14 +70,7 @@ export const useAuthStore = defineStore('auth', () => {
             return null
         }
 
-        // SUPABASE VERSI LAMA:
-        /*
-        const { data, error: err } = await supabase
-            .from('profiles')
-            .select('*')
-            .eq('id', uid)
-            .single()
-        */
+
     }
 
     // ===== ACTIONS =====
@@ -143,11 +135,7 @@ export const useAuthStore = defineStore('auth', () => {
             isInitialized.value = true
         })
 
-        // SUPABASE VERSI LAMA:
-        /*
-        const { data: { session } } = await supabase.auth.getSession()
-        // ... logic supabase lainnya ...
-        */
+
     }
 
     /**
@@ -181,10 +169,7 @@ export const useAuthStore = defineStore('auth', () => {
             isLoading.value = false
         }
 
-        // SUPABASE VERSI LAMA:
-        /*
-        const { data, error: err } = await supabase.auth.signInWithPassword({ ... })
-        */
+
     }
 
     /**
@@ -237,11 +222,7 @@ export const useAuthStore = defineStore('auth', () => {
             isLoading.value = false
         }
 
-        // SUPABASE VERSI LAMA:
-        /*
-        const { data, error: err } = await supabase.auth.signUp({ ... })
-        // ... logic polling & fallback insert ...
-        */
+
     }
 
     /**
@@ -255,10 +236,7 @@ export const useAuthStore = defineStore('auth', () => {
             console.error('[Auth] Logout error:', err)
         }
 
-        // SUPABASE VERSI LAMA:
-        /*
-        await supabase.auth.signOut()
-        */
+
     }
 
     /**
@@ -283,10 +261,7 @@ export const useAuthStore = defineStore('auth', () => {
             isLoading.value = false
         }
 
-        // SUPABASE VERSI LAMA:
-        /*
-        const { data, error: err } = await supabase.from('profiles').update(...)
-        */
+
     }
 
     /**

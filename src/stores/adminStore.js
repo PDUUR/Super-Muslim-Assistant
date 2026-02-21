@@ -27,8 +27,7 @@ import {
     getCountFromServer
 } from 'firebase/firestore'
 
-// SUPABASE IMPORTS (Non-aktif)
-// import { supabase } from '@/libs/supabase'
+
 
 export const useAdminStore = defineStore('admin', () => {
     const authStore = useAuthStore()
@@ -144,11 +143,7 @@ export const useAdminStore = defineStore('admin', () => {
             isLoading.value = false
         }
 
-        // SUPABASE VERSI LAMA:
-        /*
-        const { data, error: rpcErr } = await supabase.rpc('get_admin_stats')
-        // ... fallback manual query ...
-        */
+
     }
 
     /**
@@ -193,10 +188,7 @@ export const useAdminStore = defineStore('admin', () => {
             throw err
         }
 
-        // SUPABASE VERSI LAMA:
-        /*
-        await supabase.rpc('admin_edit_points', { ... })
-        */
+
     }
 
     /**

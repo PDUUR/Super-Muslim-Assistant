@@ -6,14 +6,14 @@
  * 
  * Fitur:
  * - Ambil jadwal dari API myquran.com berdasarkan city_id
- * - Simpan city_id & city_name ke Supabase (persistent)
+ * - Simpan city_id & city_name ke Firestore (persistent)
  * - Realtime countdown ke waktu salat berikutnya
  * - Cache harian di localStorage untuk kecepatan
  * ============================================================
  */
 import { defineStore } from 'pinia'
 import { ref, computed, onUnmounted } from 'vue'
-import { supabase } from '@/libs/supabase'
+
 import { useAuthStore } from './authStore'
 import { db } from '@/firebase/config'
 import { doc, updateDoc } from 'firebase/firestore'
@@ -85,7 +85,7 @@ export const usePrayerStore = defineStore('prayer', () => {
     }
 
     /**
-     * Pilih Kota & Simpan ke Supabase
+     * Pilih Kota & Simpan ke Firebase (Firestore)
      * city_id dan city_name disimpan permanen di database.
      */
     const selectCity = async (city) => {
@@ -122,7 +122,7 @@ export const usePrayerStore = defineStore('prayer', () => {
     }
 
     /**
-     * Load kota yang tersimpan dari Supabase (saat init)
+     * Load kota yang tersimpan (saat init)
      */
     const loadSavedCity = async () => {
         if (authStore.profile?.city_id) {
