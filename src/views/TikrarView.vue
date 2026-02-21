@@ -28,12 +28,17 @@ const showResult = ref(false);       // Tampilkan hasil jawaban
 const lastResult = ref(null);        // 'correct' atau 'wrong'
 const roundNumber = ref(0);          // Nomor ronde (siklus antrean ke-N)
 
-// ─── Speech Recognition ────────────────────────────────────────
+// ─── Speech Recognition (Hugging Face API) ────────────────────
 const isListening = ref(false);
+const isRecording = ref(false);
+const isTranscribing = ref(false);
 const speechText = ref('');
 const speechAccuracy = ref(null);
-const speechSupported = ref(false);
-let recognition = null;
+let mediaRecorder = null;
+let audioChunks = [];
+
+// Ganti dengan Hugging Face Token Anda (Settings > Access Tokens)
+const HF_TOKEN = "hf_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"; // Masukkan token Anda di sini
 
 // ─── Hint System ───────────────────────────────────────────────
 const showHint = ref(false);
@@ -238,75 +243,77 @@ function answerWrong() {
   checkAnswer(false);
 }
 
-// ─── Speech Recognition (Web Speech API) ───────────────────────
-function initSpeechRecognition() {
-  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (!SpeechRecognition) {
-    speechSupported.value = false;
-    return;
+async function transcribeAudio(audioBlob) {
+  isTranscribing.value = true;
+  const API_URL = "https://api-inference.huggingface.co/models/openai/whisper-large-v3";
+  
+  try {
+    const response = await fetch(API_URL, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${HF_TOKEN}`,
+        "Content-Type": "audio/wav",
+      },
+      body: audioBlob
+    });
+    
+    const result = await response.json();
+    return result.text || "";
+  } catch (error) {
+    console.error('[Speech API] Error:', error);
+    errorMessage.value = 'Gagal memproses suara. Coba lagi.';
+    setTimeout(() => errorMessage.value = '', 3000);
+    return "";
+  } finally {
+    isTranscribing.value = false;
   }
-
-  speechSupported.value = true;
-  recognition = new SpeechRecognition();
-  recognition.lang = 'ar-SA'; // Bahasa Arab
-  recognition.continuous = false;
-  recognition.interimResults = false;
-  recognition.maxAlternatives = 3;
-
-  recognition.onresult = (event) => {
-    const results = event.results[0];
-    let bestMatch = '';
-    let bestAccuracy = 0;
-
-    // Cek semua alternatif untuk akurasi terbaik
-    for (let i = 0; i < results.length; i++) {
-      const transcript = results[i].transcript;
-      const accuracy = compareSpeechToText(transcript, currentAyah.value.teksArab);
-      if (accuracy > bestAccuracy) {
-        bestAccuracy = accuracy;
-        bestMatch = transcript;
-      }
-    }
-
-    speechText.value = bestMatch;
-    speechAccuracy.value = Math.round(bestAccuracy);
-
-    // Jika akurasi di atas 80%, anggap benar
-    if (bestAccuracy >= 80) {
-      checkAnswer(true);
-    } else {
-      checkAnswer(false);
-    }
-
-    isListening.value = false;
-  };
-
-  recognition.onerror = (event) => {
-    console.warn('[Speech] Error:', event.error);
-    isListening.value = false;
-    if (event.error === 'no-speech') {
-      errorMessage.value = 'Tidak terdeteksi suara. Coba lagi.';
-      setTimeout(() => errorMessage.value = '', 3000);
-    }
-  };
-
-  recognition.onend = () => {
-    isListening.value = false;
-  };
 }
 
-function startListening() {
-  if (!recognition || isListening.value) return;
-  speechText.value = '';
-  speechAccuracy.value = null;
-  isListening.value = true;
-  recognition.start();
+async function startListening() {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    mediaRecorder = new MediaRecorder(stream);
+    audioChunks = [];
+
+    mediaRecorder.ondataavailable = (event) => {
+      audioChunks.push(event.data);
+    };
+
+    mediaRecorder.onstop = async () => {
+      const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
+      const transcription = await transcribeAudio(audioBlob);
+      
+      if (transcription) {
+        speechText.value = transcription;
+        const accuracy = compareSpeechToText(transcription, currentAyah.value.teksArab);
+        speechAccuracy.value = Math.round(accuracy);
+
+        if (accuracy >= 80) {
+          checkAnswer(true);
+        } else {
+          checkAnswer(false);
+        }
+      }
+      isListening.value = false;
+    };
+
+    mediaRecorder.start();
+    isRecording.value = true;
+    isListening.value = true;
+    speechText.value = '';
+    speechAccuracy.value = null;
+  } catch (error) {
+    console.error('[Speech] Access denied:', error);
+    errorMessage.value = 'Izin mikrofon ditolak.';
+    setTimeout(() => errorMessage.value = '', 3000);
+  }
 }
 
 function stopListening() {
-  if (!recognition) return;
-  recognition.stop();
-  isListening.value = false;
+  if (mediaRecorder && isRecording.value) {
+    mediaRecorder.stop();
+    isRecording.value = false;
+  }
 }
 
 // ─── Compare Speech to Text (Levenshtein-based similarity) ─────
@@ -372,12 +379,12 @@ function resetGame() {
 
 // ─── Lifecycle ──────────────────────────────────────────────────
 onMounted(() => {
-  initSpeechRecognition();
+  // Website info for microphone access
 });
 
 onUnmounted(() => {
-  if (recognition) {
-    recognition.abort();
+  if (mediaRecorder && isRecording.value) {
+    mediaRecorder.stop();
   }
 });
 
@@ -608,15 +615,14 @@ watch(selectedSurahId, async (newId) => {
 
         <!-- Speech Recognition Button -->
         <button
-          v-if="speechSupported"
           @click="isListening ? stopListening() : startListening()"
           :class="isListening
             ? 'bg-red-500 shadow-red-500/30 ring-4 ring-red-500/20 animate-pulse'
             : 'bg-gradient-to-r from-blue-500 to-cyan-500 shadow-blue-500/30'"
           class="w-full text-white font-black py-4 px-6 rounded-2xl shadow-lg transition-all active:scale-95 text-sm uppercase tracking-widest"
         >
-          <i :class="isListening ? 'fas fa-stop' : 'fas fa-microphone'" class="mr-2"></i>
-          {{ isListening ? 'Berhenti Mendengar...' : 'Baca dengan Suara' }}
+          <i :class="isListening ? (isTranscribing ? 'fas fa-spinner animate-spin' : 'fas fa-stop') : 'fas fa-microphone'" class="mr-2"></i>
+          {{ isListening ? (isTranscribing ? 'Memproses...' : 'Berhenti Mendengar...') : 'Baca dengan Suara' }}
         </button>
 
         <!-- Manual Check Buttons -->
