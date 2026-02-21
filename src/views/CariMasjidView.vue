@@ -5,8 +5,7 @@
         <div class="absolute -right-16 -top-16 w-48 h-48 bg-green-500/10 rounded-full blur-3xl"></div>
         <div class="absolute -left-10 bottom-0 w-32 h-32 bg-blue-500/10 rounded-full blur-2xl"></div>
         
-        <h1 class="text-3xl font-black text-slate-900 dark:text-white mb-2 tracking-tight">Eksplorasi Masjid</h1>
-        <p class="text-slate-500 dark:text-gray-400 text-xs font-medium italic mb-6">Navigasi gratis & akurat menggunakan OpenStreetMap.</p>
+        <h1 class="text-3xl font-black text-slate-900 dark:text-white mb-6 tracking-tight">Cari Masjid</h1>
         
         <div class="flex flex-col gap-4">
             <!-- Status Badge -->
