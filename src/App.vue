@@ -61,8 +61,6 @@ const checkSmartNotifications = () => {
 
     if (timeString === '08:30') notificationStore.showNotification('sunnah', 'duha');
     if (timeString === '03:00') notificationStore.showNotification('sunnah', 'tahajud');
-    
-    if (currentMinute === 0 && Math.random() > 0.7) notificationStore.showNotification('reminder');
 };
 
 const showChangelog = () => {
@@ -95,7 +93,7 @@ const showChangelog = () => {
                             <i class="fas fa-bell text-amber-600"></i>
                             <h4 class="font-black text-sm text-slate-800 dark:text-white uppercase tracking-tight">Smart Notification</h4>
                         </div>
-                        <p class="text-[11px] text-slate-600 dark:text-gray-400 leading-relaxed font-medium">Geser (swipe) untuk hapus notifikasi. Dilengkapi pengingat Sedekah berkala untuk hari-hari penuh berkah Anda.</p>
+                        <p class="text-[11px] text-slate-600 dark:text-gray-400 leading-relaxed font-medium">Geser (swipe) untuk hapus notifikasi penting seperti waktu Shalat, Zikir, dan Duha.</p>
                     </div>
 
                     <div class="p-4 bg-purple-500/10 rounded-2xl border border-purple-500/20">
@@ -124,7 +122,6 @@ const handleEnter = () => {
     }
     setTimeout(() => {
         showChangelog();
-        notificationStore.showNotification('reminder');
     }, 2000);
 };
 
@@ -141,7 +138,6 @@ onMounted(async () => {
 
     setTimeout(() => {
         showChangelog();
-        notificationStore.showNotification('reminder');
     }, 3000);
   }
 
