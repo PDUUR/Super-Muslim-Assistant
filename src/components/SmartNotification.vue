@@ -68,7 +68,6 @@ const notificationStore = useNotificationStore();
 const iconMap = {
     azan: 'fa-mosque',
     zikir: 'fa-pray',
-    dhuha: 'fa-sun',
     dhuha: 'fa-sun'
 };
 

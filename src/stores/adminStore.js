@@ -17,6 +17,9 @@ import { useAuthStore } from './authStore'
 // FIREBASE IMPORTS
 import { db } from '@/firebase/config'
 import {
+    collection,
+    getDocs,
+    doc,
     updateDoc,
     deleteDoc,
     query,
