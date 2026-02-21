@@ -34,11 +34,37 @@ const isRecording = ref(false);
 const isTranscribing = ref(false);
 const speechText = ref('');
 const speechAccuracy = ref(null);
+const recordingDuration = ref(0); // Durasi rekaman dalam detik
 let mediaRecorder = null;
 let audioChunks = [];
+let currentStream = null;        // Referensi stream mikrofon
+let recordingTimer = null;       // Timer hitung durasi rekaman
 
 // Token diambil dari file .env untuk keamanan (VITE_HF_TOKEN)
-const HF_TOKEN = import.meta.env.VITE_HF_TOKEN; 
+const HF_TOKEN = import.meta.env.VITE_HF_TOKEN;
+
+// Model khusus bacaan Al-Qur'an — lebih akurat daripada Whisper umum
+const HF_MODEL = 'tarteel-ai/whisper-base-ar-quran';
+// Fallback: model umum jika model Qur'an tidak tersedia
+const HF_MODEL_FALLBACK = 'openai/whisper-large-v3';
+
+// Deteksi MIME type yang didukung browser
+function getSupportedMimeType() {
+  const types = [
+    'audio/webm;codecs=opus',
+    'audio/webm',
+    'audio/ogg;codecs=opus',
+    'audio/ogg',
+    'audio/mp4',
+    'audio/wav',
+  ];
+  for (const type of types) {
+    if (MediaRecorder.isTypeSupported(type)) {
+      return type;
+    }
+  }
+  return ''; // Biarkan browser memilih default
+}
 
 // ─── Hint System ───────────────────────────────────────────────
 const showHint = ref(false);
@@ -243,82 +269,165 @@ function answerWrong() {
   checkAnswer(false);
 }
 
-async function transcribeAudio(audioBlob) {
-  isTranscribing.value = true;
-  const API_URL = "https://api-inference.huggingface.co/models/openai/whisper-large-v3";
-
-  // Buat timeout 30 detik agar UI tidak macet selamanya
-  const timeoutSignal = AbortSignal.timeout(30000);
-
+// ─── Kirim Audio ke Hugging Face API ──────────────────────────
+async function transcribeAudio(audioBlob, modelUrl) {
+  const url = modelUrl || `https://api-inference.huggingface.co/models/${HF_MODEL}`;
+  
   try {
-    const response = await fetch(API_URL, {
-      method: "POST",
+    const response = await fetch(url, {
+      method: 'POST',
       headers: {
-        "Authorization": `Bearer ${HF_TOKEN}`,
-        "Content-Type": "audio/wav",
+        'Authorization': `Bearer ${HF_TOKEN}`,
       },
-      body: audioBlob,
-      signal: timeoutSignal,
+      body: audioBlob, // Kirim blob langsung sebagai binary body
+      signal: AbortSignal.timeout(45000), // Timeout 45 detik
     });
 
-    // Model HuggingFace gratis kadang butuh warming up, mengembalikan 503
+    // Model sedang loading (cold start) — HTTP 503
     if (response.status === 503) {
-      errorMessage.value = '⏳ Model AI sedang loading (±30 detik). Coba rekam ulang setelah menunggu.';
-      setTimeout(() => errorMessage.value = '', 6000);
-      return "";
+      const body = await response.json().catch(() => ({}));
+      const wait = body.estimated_time ? Math.ceil(body.estimated_time) : 30;
+      errorMessage.value = `⏳ Model AI sedang dipersiapkan (~${wait} detik). Tunggu sebentar lalu coba lagi.`;
+      setTimeout(() => errorMessage.value = '', 8000);
+      return '';
     }
 
+    // Error lainnya
     if (!response.ok) {
-      errorMessage.value = `Gagal memanggil API (${response.status}). Coba lagi.`;
-      setTimeout(() => errorMessage.value = '', 4000);
-      return "";
+      const body = await response.json().catch(() => ({}));
+      console.error('[HF API] HTTP Error:', response.status, body);
+
+      // Jika model Qur'an gagal, coba fallback ke Whisper umum
+      if (modelUrl !== `https://api-inference.huggingface.co/models/${HF_MODEL_FALLBACK}`) {
+        console.warn('[HF API] Model Qur\'an gagal, mencoba fallback Whisper...');
+        return await transcribeAudio(audioBlob, `https://api-inference.huggingface.co/models/${HF_MODEL_FALLBACK}`);
+      }
+
+      errorMessage.value = `API Error (${response.status}): ${body.error || 'Tidak diketahui'}. Coba lagi.`;
+      setTimeout(() => errorMessage.value = '', 5000);
+      return '';
     }
 
     const result = await response.json();
-    // Whisper bisa mengembalikan { text: "..." } atau array error
+
+    // Response error dari model
     if (result.error) {
-      errorMessage.value = `API Error: ${result.error}`;
+      // Jika model Qur'an error, fallback
+      if (modelUrl !== `https://api-inference.huggingface.co/models/${HF_MODEL_FALLBACK}`) {
+        console.warn('[HF API] Model Qur\'an error, fallback...', result.error);
+        return await transcribeAudio(audioBlob, `https://api-inference.huggingface.co/models/${HF_MODEL_FALLBACK}`);
+      }
+      errorMessage.value = `API: ${result.error}`;
       setTimeout(() => errorMessage.value = '', 5000);
-      return "";
+      return '';
     }
-    return result.text || "";
+
+    console.log('[HF API] Transkripsi berhasil:', result.text);
+    return result.text || '';
   } catch (error) {
     if (error.name === 'TimeoutError' || error.name === 'AbortError') {
-      errorMessage.value = 'Waktu habis (timeout). Coba rekam ulang.';
+      errorMessage.value = 'Waktu habis. Periksa koneksi internet lalu coba lagi.';
     } else {
       errorMessage.value = 'Gagal memproses suara. Pastikan koneksi internet aktif.';
     }
-    console.error('[Speech API] Error:', error);
-    setTimeout(() => errorMessage.value = '', 4000);
-    return "";
-  } finally {
-    // SELALU reset isTranscribing, apapun yang terjadi
-    isTranscribing.value = false;
+    console.error('[HF API] Fetch Error:', error);
+    setTimeout(() => errorMessage.value = '', 5000);
+    return '';
   }
 }
 
+// ─── Mulai Rekam (Klik/Tekan Tombol) ─────────────────────────
 async function startListening() {
-  if (isListening.value) return; // Cegah double-click
+  if (isListening.value || isTranscribing.value) return;
+
+  // Reset state
+  speechText.value = '';
+  speechAccuracy.value = null;
+  errorMessage.value = '';
+  audioChunks = [];
+  recordingDuration.value = 0;
+
+  // Step 1: Minta izin mikrofon
   try {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    mediaRecorder = new MediaRecorder(stream);
-    audioChunks = [];
+    currentStream = await navigator.mediaDevices.getUserMedia({ 
+      audio: {
+        channelCount: 1,        // Mono (lebih kecil ukurannya)
+        sampleRate: 16000,      // 16kHz cukup untuk speech
+        echoCancellation: true,
+        noiseSuppression: true,
+      }
+    });
+  } catch (error) {
+    console.error('[Mic] Gagal akses mikrofon:', error);
+    if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
+      errorMessage.value = '🎙️ Izin mikrofon ditolak. Klik ikon gembok di address bar browser untuk mengizinkan.';
+    } else if (error.name === 'NotFoundError') {
+      errorMessage.value = '🎙️ Mikrofon tidak ditemukan. Pastikan perangkat memiliki mikrofon.';
+    } else {
+      errorMessage.value = '🎙️ Tidak dapat mengakses mikrofon. Coba lagi.';
+    }
+    setTimeout(() => errorMessage.value = '', 6000);
+    return;
+  }
+
+  // Step 2: Setup MediaRecorder dengan MIME type yang didukung
+  try {
+    const mimeType = getSupportedMimeType();
+    const options = mimeType ? { mimeType } : {};
+    console.log('[Recorder] MIME type:', mimeType || 'browser default');
+
+    mediaRecorder = new MediaRecorder(currentStream, options);
 
     mediaRecorder.ondataavailable = (event) => {
-      if (event.data.size > 0) audioChunks.push(event.data);
+      if (event.data && event.data.size > 0) {
+        audioChunks.push(event.data);
+      }
     };
 
+    // Step 3: Saat rekaman dihentikan → kirim ke API 
     mediaRecorder.onstop = async () => {
-      // Hentikan semua track agar ikon mikrofon browser hilang
-      stream.getTracks().forEach(track => track.stop());
+      // Bersihkan timer durasi
+      if (recordingTimer) {
+        clearInterval(recordingTimer);
+        recordingTimer = null;
+      }
 
-      const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+      // Hentikan semua track mikrofon (ikon merah di browser hilang)
+      if (currentStream) {
+        currentStream.getTracks().forEach(track => track.stop());
+        currentStream = null;
+      }
 
+      isRecording.value = false;
+
+      // Cek apakah ada data yang terekam
+      if (audioChunks.length === 0) {
+        errorMessage.value = 'Tidak ada audio yang terekam. Coba lagi.';
+        setTimeout(() => errorMessage.value = '', 4000);
+        isListening.value = false;
+        return;
+      }
+
+      // Step 4: Buat Blob dari chunks
+      const recordedMime = mediaRecorder.mimeType || mimeType || 'audio/webm';
+      const audioBlob = new Blob(audioChunks, { type: recordedMime });
+      console.log('[Recorder] Audio blob:', audioBlob.size, 'bytes,', recordedMime);
+
+      // Cek ukuran minimun (terlalu kecil = tidak ada suara)
+      if (audioBlob.size < 1000) {
+        errorMessage.value = 'Rekaman terlalu pendek. Tahan tombol lebih lama saat membaca.';
+        setTimeout(() => errorMessage.value = '', 4000);
+        isListening.value = false;
+        return;
+      }
+
+      // Step 5: Kirim ke Hugging Face & tampilkan status loading
+      isTranscribing.value = true;
       try {
         const transcription = await transcribeAudio(audioBlob);
 
         if (transcription && transcription.trim()) {
-          speechText.value = transcription;
+          speechText.value = transcription.trim();
           const accuracy = compareSpeechToText(transcription, currentAyah.value.teksArab);
           speechAccuracy.value = Math.round(accuracy);
 
@@ -328,45 +437,75 @@ async function startListening() {
             checkAnswer(false);
           }
         } else if (!errorMessage.value) {
-          // Tidak ada transkripsi dan tidak ada pesan error sebelumnya
-          errorMessage.value = 'Suara tidak terdeteksi atau tidak jelas. Coba lagi.';
+          errorMessage.value = 'Suara tidak terdeteksi. Pastikan membaca dengan jelas.';
           setTimeout(() => errorMessage.value = '', 4000);
         }
       } finally {
-        // SELALU reset state, apapun yang terjadi
+        isTranscribing.value = false;
         isListening.value = false;
-        isRecording.value = false;
       }
     };
 
-    mediaRecorder.start();
+    // Mulai merekam! (timeslice 250ms agar data terus mengalir)
+    mediaRecorder.start(250);
     isRecording.value = true;
     isListening.value = true;
-    speechText.value = '';
-    speechAccuracy.value = null;
-    errorMessage.value = '';
+
+    // Hitung durasi rekaman
+    recordingTimer = setInterval(() => {
+      recordingDuration.value++;
+    }, 1000);
+
+    console.log('[Recorder] Mulai merekam...');
   } catch (error) {
-    console.error('[Speech] Error:', error);
-    if (error.name === 'NotAllowedError') {
-      errorMessage.value = 'Izin mikrofon ditolak. Aktifkan akses mikrofon di browser.';
-    } else {
-      errorMessage.value = 'Tidak dapat mengakses mikrofon. Coba lagi.';
-    }
+    console.error('[Recorder] Setup error:', error);
+    errorMessage.value = 'Gagal memulai perekaman. Coba refresh halaman.';
     setTimeout(() => errorMessage.value = '', 5000);
+    // Bersihkan stream jika ada
+    if (currentStream) {
+      currentStream.getTracks().forEach(track => track.stop());
+      currentStream = null;
+    }
     isListening.value = false;
     isRecording.value = false;
   }
 }
 
+// ─── Berhenti Rekam ─────────────────────────────────────────
 function stopListening() {
-  if (mediaRecorder && isRecording.value) {
+  if (mediaRecorder && mediaRecorder.state === 'recording') {
     try {
-      mediaRecorder.stop(); // akan memicu onstop → reset isListening
+      mediaRecorder.stop(); // Akan memicu onstop → proses API
     } catch (e) {
-      // Jika stop() gagal, reset manual
+      console.error('[Recorder] Stop error:', e);
+      // Bersihkan semuanya secara manual
+      if (currentStream) {
+        currentStream.getTracks().forEach(track => track.stop());
+        currentStream = null;
+      }
+      if (recordingTimer) {
+        clearInterval(recordingTimer);
+        recordingTimer = null;
+      }
       isListening.value = false;
       isRecording.value = false;
+      isTranscribing.value = false;
     }
+  }
+}
+
+// ─── Bersihkan resource saat komponen dihancurkan ────────────
+function cleanupRecording() {
+  if (mediaRecorder && mediaRecorder.state === 'recording') {
+    mediaRecorder.stop();
+  }
+  if (currentStream) {
+    currentStream.getTracks().forEach(track => track.stop());
+    currentStream = null;
+  }
+  if (recordingTimer) {
+    clearInterval(recordingTimer);
+    recordingTimer = null;
   }
 }
 
@@ -433,13 +572,17 @@ function resetGame() {
 
 // ─── Lifecycle ──────────────────────────────────────────────────
 onMounted(() => {
-  // Website info for microphone access
+  // Cek apakah browser mendukung MediaRecorder
+  if (!window.MediaRecorder) {
+    console.warn('[Tikrar] MediaRecorder tidak didukung di browser ini.');
+  }
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    console.warn('[Tikrar] getUserMedia tidak didukung.');
+  }
 });
 
 onUnmounted(() => {
-  if (mediaRecorder && isRecording.value) {
-    mediaRecorder.stop();
-  }
+  cleanupRecording();
 });
 
 // Watch surah selection
@@ -667,17 +810,41 @@ watch(selectedSurahId, async (newId) => {
           {{ showHint ? 'Sembunyikan Petunjuk' : 'Lihat Petunjuk' }}
         </button>
 
-        <!-- Speech Recognition Button -->
+        <!-- Speech Recognition Button: Tekan & Tahan untuk merekam -->
         <button
-          @click="isListening ? stopListening() : startListening()"
-          :class="isListening
-            ? 'bg-red-500 shadow-red-500/30 ring-4 ring-red-500/20 animate-pulse'
-            : 'bg-gradient-to-r from-blue-500 to-cyan-500 shadow-blue-500/30'"
-          class="w-full text-white font-black py-4 px-6 rounded-2xl shadow-lg transition-all active:scale-95 text-sm uppercase tracking-widest"
+          @mousedown.prevent="startListening"
+          @mouseup.prevent="stopListening"
+          @mouseleave="isRecording ? stopListening() : null"
+          @touchstart.prevent="startListening"
+          @touchend.prevent="stopListening"
+          :disabled="isTranscribing"
+          :class="[
+            isTranscribing 
+              ? 'bg-amber-500 shadow-amber-500/30 cursor-wait'
+              : isRecording
+                ? 'bg-red-500 shadow-red-500/30 ring-4 ring-red-500/20 animate-pulse'
+                : 'bg-gradient-to-r from-blue-500 to-cyan-500 shadow-blue-500/30 hover:shadow-xl'
+          ]"
+          class="w-full text-white font-black py-4 px-6 rounded-2xl shadow-lg transition-all active:scale-95 text-sm uppercase tracking-widest select-none"
         >
-          <i :class="isListening ? (isTranscribing ? 'fas fa-spinner animate-spin' : 'fas fa-stop') : 'fas fa-microphone'" class="mr-2"></i>
-          {{ isListening ? (isTranscribing ? 'Memproses...' : 'Berhenti Mendengar...') : 'Baca dengan Suara' }}
+          <i :class="[
+            isTranscribing ? 'fas fa-spinner animate-spin'
+              : isRecording ? 'fas fa-circle text-red-200 animate-pulse'
+              : 'fas fa-microphone'
+          ]" class="mr-2"></i>
+          <template v-if="isTranscribing">
+            Memproses suara...
+          </template>
+          <template v-else-if="isRecording">
+            🔴 Merekam... ({{ recordingDuration }}s) — Lepas untuk kirim
+          </template>
+          <template v-else>
+            🎙️ Tekan & Tahan untuk Merekam
+          </template>
         </button>
+        <p v-if="!isListening && !isTranscribing" class="text-[10px] text-center text-slate-400 dark:text-gray-500 mt-1">
+          Tahan tombol selama membaca ayat, lalu lepaskan.
+        </p>
 
         <!-- Manual Check Buttons -->
         <div class="flex gap-3">
