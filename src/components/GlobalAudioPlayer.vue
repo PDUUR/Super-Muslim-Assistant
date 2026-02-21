@@ -7,6 +7,7 @@ const audioStore = useAudioStore();
 const router = useRouter();
 
 const isMinimized = ref(false);
+const wakeLock = ref(null);
 const playerPos = reactive({
   x: window.innerWidth - 380, // Default position
   y: window.innerHeight - 150
@@ -65,19 +66,49 @@ const toggleMinimize = (e) => {
   isMinimized.value = !isMinimized.value;
 };
 
-// Reset position on resize if it goes off screen
+// Wake Lock Management
+const requestWakeLock = async () => {
+  if ('wakeLock' in navigator && !wakeLock.value) {
+    try {
+      wakeLock.value = await navigator.wakeLock.request('screen');
+      wakeLock.value.onrelease = () => {
+        wakeLock.value = null;
+      };
+    } catch (err) {
+      console.warn('Wake Lock request failed:', err.message);
+    }
+  }
+};
+
+const releaseWakeLock = () => {
+  if (wakeLock.value) {
+    wakeLock.value.release();
+    wakeLock.value = null;
+  }
+};
+
+// Sync Wake Lock with IsPlaying State
 onMounted(() => {
+  audioStore.init(); // Initialize last session
+
   window.addEventListener('resize', () => {
     playerPos.x = Math.min(playerPos.x, window.innerWidth - 350);
     playerPos.y = Math.min(playerPos.y, window.innerHeight - 100);
   });
 
-  // Media Session API for background playback control
-  if ('mediaSession' in navigator) {
-    navigator.mediaSession.setActionHandler('play', () => audioStore.toggle());
-    navigator.mediaSession.setActionHandler('pause', () => audioStore.toggle());
-    navigator.mediaSession.setActionHandler('stop', () => audioStore.stop());
-  }
+  // Handle visibility change to re-request wake lock if needed
+  document.addEventListener('visibilitychange', async () => {
+    if (wakeLock.value !== null && document.visibilityState === 'visible') {
+      await requestWakeLock();
+    }
+  });
+});
+
+// Watch for playback changes to manage Wake Lock
+import { watch } from 'vue';
+watch(() => audioStore.state.isPlaying, (playing) => {
+  if (playing) requestWakeLock();
+  else releaseWakeLock();
 });
 </script>
 
