@@ -59,6 +59,7 @@ const superFeatures = [
     { name: 'Cari Masjid', icon: 'fas fa-mosque', route: '/cari-masjid', color: 'bg-blue-500', desc: 'Temukan masjid terdekat' },
     { name: 'Catatan Puasa', icon: 'fas fa-calendar-check', route: '/catatan-puasa', color: 'bg-amber-500', desc: 'Catat puasa Ramadhan' },
     { name: 'Komunitas', icon: 'fas fa-users', route: '/komunitas', color: 'bg-purple-500', desc: 'Diskusi & inspirasi' },
+    { name: 'Tikrar Leveling', icon: 'fas fa-brain', route: '/tikrar', color: 'bg-gradient-to-br from-indigo-500 to-pink-500', desc: 'Uji hafalan Al-Qur\'an' },
 ];
 </script>
 

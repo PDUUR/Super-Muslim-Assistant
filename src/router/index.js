@@ -14,6 +14,7 @@ import AdminDashboardView from "@/views/AdminDashboardView.vue";
 import AdminUsersView from "@/views/AdminUsersView.vue";
 import QiblaView from "@/views/QiblaView.vue";
 import SuperFeaturesView from "@/views/SuperFeaturesView.vue";
+import TikrarView from "@/views/TikrarView.vue";
 import ErrorView from "@/views/ErrorView.vue";
 import { useAuthStore } from "@/stores/authStore";
 
@@ -122,6 +123,15 @@ const router = createRouter({
       component: SuperFeaturesView,
       meta: {
         title: "Fitur Super - Super Muslim Assistant",
+        requiresAuth: true
+      },
+    },
+    {
+      path: "/tikrar",
+      name: "Tikrar Leveling",
+      component: TikrarView,
+      meta: {
+        title: "Tikrar Leveling - Super Muslim Assistant",
         requiresAuth: true
       },
     },
