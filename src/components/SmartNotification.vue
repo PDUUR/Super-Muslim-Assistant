@@ -1,85 +1,128 @@
 <template>
   <Transition name="notification-slide">
     <div v-if="notificationStore.isVisible && notificationStore.currentMessage" 
-         class="fixed top-4 left-1/2 -translate-x-1/2 z-[9999] w-[90%] max-w-sm">
+         class="fixed top-4 left-1/2 -translate-x-1/2 z-[9999] w-[92%] max-w-sm touch-none"
+         @touchstart="handleTouchStart"
+         @touchmove="handleTouchMove"
+         @touchend="handleTouchEnd"
+         :style="cardStyle">
       
       <!-- Notification Card -->
-      <div class="bg-white dark:bg-slate-800 rounded-3xl shadow-2xl border border-slate-100 dark:border-slate-700/50 overflow-hidden relative backdrop-blur-md">
+      <div class="bg-white/90 dark:bg-slate-900/90 backdrop-blur-xl rounded-[2rem] shadow-2xl border border-white/20 dark:border-white/5 overflow-hidden relative active:scale-95 transition-transform duration-200">
         
         <!-- Header: App Icon & Name -->
-        <div class="bg-slate-50/50 dark:bg-slate-900/30 px-5 py-3 flex items-center justify-between border-b border-slate-100 dark:border-slate-700/50">
+        <div class="bg-slate-50/50 dark:bg-slate-800/30 px-5 py-3 flex items-center justify-between border-b border-white/10 dark:border-white/5">
           <div class="flex items-center gap-2">
-            <div class="w-6 h-6 bg-emerald-500 rounded-lg flex items-center justify-center text-white text-[10px]">
-              <i class="fas fa-moon"></i>
+            <div class="w-6 h-6 bg-gradient-to-br from-emerald-400 to-green-600 rounded-lg flex items-center justify-center text-white text-[10px] shadow-sm">
+              <i class="fas" :class="iconMap[notificationStore.currentMessage.type] || 'fa-bell'"></i>
             </div>
-            <span class="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">
-              Super Muslim • Sekarang
+            <span class="text-[9px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
+              Super Muslim • Baru Saja
             </span>
           </div>
-          <button @click="notificationStore.closeNotification" class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
-            <i class="fas fa-times text-xs"></i>
-          </button>
+          <div class="flex items-center gap-1">
+            <div class="w-1 h-1 rounded-full bg-green-500 animate-pulse"></div>
+            <span class="text-[8px] font-bold text-slate-400 uppercase">Live</span>
+          </div>
         </div>
 
         <!-- Body -->
-        <div class="p-5">
-          <h3 class="text-sm font-black text-slate-800 dark:text-white mb-2 leading-tight">
+        <div class="p-6">
+          <h3 class="text-sm font-black text-slate-900 dark:text-white mb-1.5 leading-tight tracking-tight">
             {{ notificationStore.currentMessage.title }}
           </h3>
-          <p class="text-xs text-slate-600 dark:text-gray-300 leading-relaxed font-medium">
+          <p class="text-[11px] text-slate-600 dark:text-gray-400 leading-relaxed font-semibold italic">
             "{{ notificationStore.currentMessage.body }}"
           </p>
         </div>
 
         <!-- Actions -->
-        <div class="flex border-t border-slate-100 dark:border-slate-700/50 divide-x divide-slate-100 dark:divide-slate-700/50">
+        <div class="flex border-t border-slate-100 dark:border-white/5 bg-slate-50/30 dark:bg-white/5">
           <button 
-            @click="takeWudhu"
-            class="flex-1 py-3 text-[10px] font-black uppercase tracking-widest text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 transition-colors">
-            Ambil Wudhu
+            @click="notificationStore.closeNotification(true)"
+            class="flex-1 py-4 text-[10px] font-black uppercase tracking-widest text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 transition-colors border-r border-slate-100 dark:border-white/5">
+            Na'am
           </button>
           <button 
-            @click="snooze"
-            class="flex-1 py-3 text-[10px] font-black uppercase tracking-widest text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors">
-            Nanti
+            @click="notificationStore.snooze"
+            class="flex-1 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400 hover:bg-slate-100 dark:hover:bg-white/5 transition-colors">
+            Nanti Deh
           </button>
         </div>
+      </div>
 
-        <!-- Progress Bar (Auto dismiss visual cue - optional, removing for now to keep it persistent until action) -->
+      <!-- Swipe Indicator -->
+      <div class="mt-2 flex justify-center opacity-30">
+        <div class="w-12 h-1 bg-slate-400 dark:bg-slate-600 rounded-full"></div>
       </div>
     </div>
   </Transition>
 </template>
 
 <script setup>
+import { ref, computed, onMounted } from 'vue';
 import { useNotificationStore } from '@/stores/notificationStore';
-import { useIbadahStore } from '@/stores/ibadahStore';
 
 const notificationStore = useNotificationStore();
-const ibadahStore = useIbadahStore();
 
-const takeWudhu = () => {
-    // Logic: Maybe log wudhu streak or just close
-    // In future, could open a "Wudhu Guide"
-    notificationStore.closeNotification();
-    // Optional: Add XP for responding
-    // ibadahStore.addXP(5); 
+const iconMap = {
+    azan: 'fa-mosque',
+    zikir: 'fa-pray',
+    dhuha: 'fa-sun',
+    sedekah: 'fa-heart'
 };
 
-const snooze = () => {
-    notificationStore.snooze();
+const touchStartX = ref(0);
+const touchCurrentX = ref(0);
+const isSwiping = ref(false);
+
+const handleTouchStart = (e) => {
+    touchStartX.value = e.touches[0].clientX;
+    isSwiping.value = true;
 };
+
+const handleTouchMove = (e) => {
+    if (!isSwiping.value) return;
+    touchCurrentX.value = e.touches[0].clientX;
+};
+
+const handleTouchEnd = () => {
+    const diff = touchCurrentX.value - touchStartX.value;
+    const threshold = 100;
+
+    if (Math.abs(diff) > threshold) {
+        notificationStore.closeNotification();
+    }
+
+    touchStartX.value = 0;
+    touchCurrentX.value = 0;
+    isSwiping.value = false;
+};
+
+const cardStyle = computed(() => {
+    if (!isSwiping.value || touchCurrentX.value === 0) return {};
+    const diff = touchCurrentX.value - touchStartX.value;
+    return {
+        transform: `translate(calc(-50% + ${diff}px), 0)`,
+        opacity: Math.max(0, 1 - Math.abs(diff) / 300),
+        transition: isSwiping.value ? 'none' : 'all 0.3s ease'
+    };
+});
+
+onMounted(() => {
+    notificationStore.startSedekahReminder();
+});
 </script>
 
 <style scoped>
 .notification-slide-enter-active,
 .notification-slide-leave-active {
-  transition: all 0.5s cubic-bezier(0.19, 1, 0.22, 1);
+  transition: all 0.6s cubic-bezier(0.19, 1, 0.22, 1);
 }
 
 .notification-slide-enter-from,
 .notification-slide-leave-to {
   opacity: 0;
-  transform: translate(-50%, -20px) scale(0.95);
+  transform: translate(-50%, -40px) scale(0.9);
 }
 </style>

@@ -101,8 +101,77 @@ const handleSurahChanged = (event) => {
     router.push(`/baca-al-quran/surah/${event.detail.nomor}`);
 };
 
+const bookmarkAyat = (nomorSurah, surahName, ayat) => {
+    Swal.fire({
+        title: 'Pilih Jenis Penanda',
+        text: `Menandai Surah ${surahName} ayat ${ayat}`,
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonText: 'Tilawah',
+        denyButtonText: 'Murajaah',
+        showDenyButton: true,
+        showCancelButton: true,
+        cancelButtonText: 'Hafalan',
+        customClass: {
+            confirmButton: 'bg-green-600 !text-white border-none',
+            denyButton: 'bg-blue-600 !text-white border-none',
+            cancelButton: 'bg-amber-500 !text-white border-none'
+        }
+    }).then((result) => {
+        let category = '';
+        let color = '';
+        
+        if (result.isConfirmed) {
+            category = 'Tilawah';
+            color = 'green';
+        } else if (result.isDenied) {
+            category = 'Murajaah';
+            color = 'blue';
+        } else if (result.dismiss === Swal.DismissReason.cancel) {
+            category = 'Hafalan';
+            color = 'amber';
+        } else {
+            return;
+        }
+
+        const bookmarkData = {
+            surah: surahName,
+            nomorSurah: nomorSurah,
+            ayat: ayat,
+            category: category,
+            color: color,
+            timestamp: new Date().getTime()
+        };
+
+        localStorage.setItem('terakhir-baca', `${surahName} ayat ${ayat} (${category})`);
+        localStorage.setItem('anchor-ayat', `${nomorSurah}#${ayat}`);
+        localStorage.setItem('bookmark-detail', JSON.stringify(bookmarkData));
+
+        Swal.fire({
+            title: 'Berhasil!',
+            text: `Ditambahkan ke penanda ${category}`,
+            icon: 'success',
+            timer: 1500,
+            showConfirmButton: false
+        });
+    });
+};
+
+const handleScrollToAnchor = () => {
+    const hash = window.location.hash || (localStorage.getItem('anchor-ayat') && window.location.href.includes('surah/') ? '#' + localStorage.getItem('anchor-ayat').split('#')[1] : null);
+    if (hash) {
+        const id = hash.replace('#', '');
+        setTimeout(() => {
+            const el = document.getElementById(id);
+            if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }, 800);
+    }
+};
+
 onMounted(() => {
-    fetchSurah(route.params.id);
+    fetchSurah(route.params.id).then(() => {
+        handleScrollToAnchor();
+    });
     window.addEventListener('ayat-changed', handleAyatChanged);
     window.addEventListener('surah-changed', handleSurahChanged);
 });
@@ -112,7 +181,6 @@ onUnmounted(() => {
     window.removeEventListener('surah-changed', handleSurahChanged);
 });
 
-// Update content when navigating between surahs
 onBeforeRouteUpdate((to, from) => {
     if (to.params.id !== from.params.id) {
         const shouldAutoPlay = (audioStore.state.audioMode === 'continuous' || audioStore.state.audioMode === 'surah') && audioStore.state.isPlaying;
@@ -130,18 +198,6 @@ const playAyat = (index) => {
     } else {
         audioStore.playAyat(index);
     }
-};
-
-const bookmarkAyat = (nomorSurah, surahName, ayat) => {
-    Swal.fire({
-        title: `Sukses menandai<br> surah ${surahName} ayat ${ayat}`,
-        icon: 'success',
-        confirmButtonText: 'Oke',
-        confirmButtonColor: '#00DC82',
-    });
-
-    localStorage.setItem('terakhir-baca', `${surahName} ayat ${ayat}`);
-    localStorage.setItem('anchor-ayat', `${nomorSurah}#${ayat}`);
 };
 </script>
 
@@ -299,7 +355,7 @@ const bookmarkAyat = (nomorSurah, surahName, ayat) => {
                         </div>
                         <div v-if="audioStore.state.currentAyatIndex === index && audioStore.state.isPlaying" class="flex items-center gap-1">
                             <span class="w-1.5 h-1.5 rounded-full bg-green-500 animate-ping"></span>
-                            <span class="text-[8px] font-black text-green-600 uppercase">Playing</span>
+                            <span class="text-[8px] font-black text-green-600 uppercase">Diputar</span>
                         </div>
                     </div>
 
@@ -315,6 +371,7 @@ const bookmarkAyat = (nomorSurah, surahName, ayat) => {
                         </p>
                         
                         <p class="text-left text-slate-700 dark:text-gray-300 text-sm leading-relaxed font-medium">
+                            <span class="text-[10px] text-green-600 font-black block mb-1">TERJEMAH:</span>
                             {{ ayat.teksIndonesia }}
                         </p>
                     </div>

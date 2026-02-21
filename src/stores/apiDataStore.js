@@ -36,9 +36,9 @@ export const useApiDataStore = defineStore("apiDataStore", () => {
         nomor: s.number,
         nama: s.name,                          // Nama Arab
         namaLatin: s.englishName,              // Nama Latin
-        arti: s.englishNameTranslation,        // Arti dalam Inggris
+        arti: s.englishNameTranslation,        // Tetap English jika API tidak sedia ID di endpoint ini
         jumlahAyat: s.numberOfAyahs,           // Jumlah Ayat
-        tempatTurun: s.revelationType,         // Makkiyah/Madaniyah
+        tempatTurun: s.revelationType === 'Meccan' ? 'Makkiyah' : 'Madaniyah',
       }));
     } else {
       console.warn('[API] Gagal ambil daftar surah:', surahRes.reason?.message);

@@ -1,5 +1,6 @@
 <script setup>
-import { reactive, computed, onMounted, onUnmounted } from 'vue';
+import { reactive, computed, onMounted, onUnmounted, ref } from 'vue';
+import { useRouter } from 'vue-router';
 import { formattedDate } from '@/assets/indonesia-time.js';
 import { useIbadahStore } from '@/stores/ibadahStore';
 import { useAdaptiveThemeStore } from '@/stores/adaptiveThemeStore';
@@ -8,6 +9,14 @@ import axios from 'axios';
 import RamadanGreeting from '@/components/RamadanGreeting.vue';
 import MotivationalGenerator from '@/components/MotivationalGenerator.vue';
 import { calculatePrayerTimes, getTimezoneLabel } from '@/utils/prayerTimes.js';
+
+const router = useRouter();
+const terakhirBaca = ref(localStorage.getItem('terakhir-baca'));
+const anchorAyat = ref(localStorage.getItem('anchor-ayat'));
+
+const navigateToBookmark = () => {
+    router.push(`/baca-al-quran/surah/${anchorAyat.value}`);
+};
 
 const ibadahStore = useIbadahStore();
 const themeStore = useAdaptiveThemeStore();
@@ -49,6 +58,7 @@ const realtime = computed(() => {
 });
 
 const calculateNextPrayer = () => {
+    if (!state.prayerTimes) return;
     const nowStr = `${strFormat(state.hours)}:${strFormat(state.minutes)}:${strFormat(state.seconds)}`;
     const times = [
         { name: 'Subuh', time: state.prayerTimes.Fajr },
@@ -141,8 +151,6 @@ const getLocation = () => {
     }
 };
 
-// Quick access features moved to SuperFeaturesView.vue
-
 // Data jadwal shalat lengkap untuk grid
 const prayerSchedule = computed(() => {
     if (!state.prayerTimes) return [];
@@ -226,7 +234,29 @@ onUnmounted(() => {
             </div>
 
             <!-- EPIC GREETING & MOTIVATION (Cleaned up from old super feature grid) -->
-            <div class="mb-4"></div>
+            <div class="mb-4">
+                <!-- Lanjutkan Membaca Quick Action -->
+                <div v-if="terakhirBaca" @click="navigateToBookmark" 
+                     class="mb-6 flex items-center justify-between p-5 bg-gradient-to-br from-green-600 to-emerald-700 rounded-[2rem] shadow-xl shadow-green-500/20 cursor-pointer active:scale-95 transition-all group overflow-hidden relative border border-white/20">
+                    <div class="absolute -right-6 -top-6 w-24 h-24 bg-white/10 rounded-full blur-2xl group-hover:scale-150 transition-transform duration-700"></div>
+                    
+                    <div class="flex items-center gap-4 relative z-10">
+                        <div class="w-12 h-12 bg-white/20 backdrop-blur-lg rounded-2xl flex items-center justify-center text-white shadow-inner">
+                            <i class="fas fa-bookmark text-xl animate-pulse"></i>
+                        </div>
+                        <div class="text-left">
+                            <p class="text-[10px] font-black text-white/70 uppercase tracking-[0.2em] mb-1">Terakhir Dibaca</p>
+                            <h4 class="text-sm font-black text-white leading-tight">
+                                {{ terakhirBaca }}
+                            </h4>
+                        </div>
+                    </div>
+                    
+                    <div class="relative z-10 bg-white/10 p-2 rounded-full backdrop-blur-sm group-hover:bg-white/20 transition-colors">
+                        <i class="fas fa-arrow-right text-white text-xs group-hover:translate-x-1 transition-transform"></i>
+                    </div>
+                </div>
+            </div>
 
             <!-- Ibadah Quick Stats (if user has data) -->
             <div v-if="ibadahStore.totalDays > 0" class="glass rounded-2xl p-5 mb-8 text-left border-l-4 border-green-500">
@@ -312,5 +342,14 @@ onUnmounted(() => {
 
 .font-mono {
     font-family: 'JetBrains Mono', monospace;
+}
+.glass {
+    background: rgba(255, 255, 255, 0.7);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+}
+.dark .glass {
+    background: rgba(15, 23, 42, 0.7);
+    border: 1px solid rgba(255, 255, 255, 0.05);
 }
 </style>

@@ -74,16 +74,31 @@ const clearBookmark = () => {
             </div>
         </HeaderContent>
 
-        <div class="flex justify-center flex-col items-center gap-2 mt-6" v-if="terakhirBaca">
-            <div class="text-[10px] text-slate-600 dark:text-gray-400 font-black uppercase tracking-widest">
-                Terakhir dibaca: <button @click="navigateToBookmark"
-                    class="text-green-600 dark:text-green-400 hover:underline">{{ terakhirBaca
-                    }}</button>
+        <div class="px-4 mt-6" v-if="terakhirBaca">
+            <div @click="navigateToBookmark" 
+                 class="flex items-center justify-between p-4 bg-gradient-to-r from-emerald-500 to-green-600 rounded-2xl shadow-lg shadow-green-500/20 cursor-pointer active:scale-95 transition-all group overflow-hidden relative">
+                <div class="absolute -right-4 -top-4 w-16 h-16 bg-white/10 rounded-full blur-xl group-hover:scale-150 transition-transform duration-700"></div>
+                
+                <div class="flex items-center gap-4 relative z-10">
+                    <div class="w-10 h-10 bg-white/20 backdrop-blur-md rounded-xl flex items-center justify-center text-white">
+                        <i class="fas fa-book-open"></i>
+                    </div>
+                    <div class="text-left">
+                        <p class="text-[9px] font-black text-white/70 uppercase tracking-widest mb-0.5">Lanjutkan Membaca</p>
+                        <h4 class="text-xs font-black text-white leading-tight truncate max-w-[180px]">
+                            {{ terakhirBaca }}
+                        </h4>
+                    </div>
+                </div>
+                
+                <div class="flex flex-col items-end gap-2 relative z-10">
+                    <button @click.stop="clearBookmark" 
+                            class="w-6 h-6 rounded-lg bg-red-400/20 hover:bg-red-400/40 text-white flex items-center justify-center transition-colors">
+                        <i class="fas fa-times text-[10px]"></i>
+                    </button>
+                    <i class="fas fa-chevron-right text-white/40 group-hover:translate-x-1 transition-transform"></i>
+                </div>
             </div>
-            <button @click="clearBookmark"
-                class="py-1 px-3 bg-red-500/10 hover:bg-red-500/20 text-red-700 dark:text-red-500 duration-300 rounded-lg text-[9px] border border-red-500/30 font-black uppercase tracking-wider">
-                <i class="fas fa-trash mr-1"></i> Hapus Jejak
-            </button>
         </div>
 
         <div class="mt-10 mb-20 px-1">
