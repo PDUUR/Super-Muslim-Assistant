@@ -69,7 +69,7 @@ const iconMap = {
     azan: 'fa-mosque',
     zikir: 'fa-pray',
     dhuha: 'fa-sun',
-    sedekah: 'fa-heart'
+    dhuha: 'fa-sun'
 };
 
 const touchStartX = ref(0);
@@ -107,10 +107,6 @@ const cardStyle = computed(() => {
         opacity: Math.max(0, 1 - Math.abs(diff) / 300),
         transition: isSwiping.value ? 'none' : 'all 0.3s ease'
     };
-});
-
-onMounted(() => {
-    // Sedekah reminder disabled by user request
 });
 </script>
 

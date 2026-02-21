@@ -24,10 +24,6 @@ export const useNotificationStore = defineStore('notification', () => {
         dhuha: {
             title: "Penyemangat Duha",
             message: "Lagi sibuk? Panggil rezekimu lewat Duha sebentar."
-        },
-        sedekah: {
-            title: "Sedekah & Tersenyum",
-            message: "Sudahkah kamu tersenyum hari ini? Sedekah paling mudah adalah senyuman tulusmu."
         }
     };
 
@@ -44,9 +40,6 @@ export const useNotificationStore = defineStore('notification', () => {
         } else if (type === 'dhuha') {
             title = categories.dhuha.title;
             body = categories.dhuha.message;
-        } else if (type === 'sedekah') {
-            title = categories.sedekah.title;
-            body = categories.sedekah.message;
         }
 
         currentMessage.value = { title, body, type };
