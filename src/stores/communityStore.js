@@ -40,6 +40,7 @@ export const useCommunityStore = defineStore('community', () => {
     const leaderboard = ref(
         JSON.parse(localStorage.getItem('sm_leaderboard') || '[]')
     )
+    const leaderboardType = ref('all-time') // 'all-time' atau 'weekly'
     const myStats = ref(
         JSON.parse(localStorage.getItem('sm_my_stats') || 'null')
     )
@@ -67,27 +68,62 @@ export const useCommunityStore = defineStore('community', () => {
 
     /**
      * Subscribe ke Leaderboard (Firebase onSnapshot)
+     * Mendukung 'all-time' dan 'weekly'
      */
-    const subscribeLeaderboard = () => {
-        if (unsubscribeLeaderboard) return
+    const subscribeLeaderboard = (type = 'all-time') => {
+        if (unsubscribeLeaderboard) {
+            unsubscribeLeaderboard()
+            unsubscribeLeaderboard = null
+        }
 
-        console.log('[Community] 📡 Subscribing to Leaderboard Realtime...')
-        const q = query(collection(db, "users"), orderBy("total_points", "desc"), limit(10))
+        leaderboardType.value = type
+        console.log(`[Community] 📡 Subscribing to ${type} Leaderboard...`)
+
+        // Konfigurasi field berdasarkan tipe
+        // All-Time: total_points & level
+        // Weekly: weeklyXp & weeklyLevel
+        const pointsField = type === 'all-time' ? 'total_points' : 'weeklyXp'
+        const levelField = type === 'all-time' ? 'level' : 'weeklyLevel'
+
+        /**
+         * PENTING: Firestore memerlukan 'Composite Index' untuk orderBy multi-field.
+         * Filter: poin > 0
+         * Urutan: Level DESC, Poin DESC
+         * Catatan: Karena kita menggunakan filter '>' pada pointsField, 
+         * maka pointsField HARUS menjadi orderBy pertama secara teknis jika menggunakan range filter.
+         * Namun, jika kita ingin Level dulu, kita gunakan orderBy Level dulu tanpa range filter pada poin,
+         * lalu filter poin > 0 di sisi klien untuk fleksibilitas maksimal dan menghindari error index.
+         * 
+         * Tapi untuk efisiensi, kita gunakan query yang paling sering diminta: Level DESC, then XP DESC.
+         */
+
+        const q = query(
+            collection(db, "users"),
+            orderBy(levelField, "desc"),
+            orderBy(pointsField, "desc"),
+            limit(50)
+        )
 
         unsubscribeLeaderboard = onSnapshot(q, (snapshot) => {
             const fetched = []
             snapshot.forEach((doc) => {
-                fetched.push({ id: doc.id, ...doc.data() })
+                const data = doc.data()
+                // Filter client-side: Jangan tampilkan yang 0 XP
+                if ((data[pointsField] || 0) > 0) {
+                    fetched.push({ id: doc.id, ...data })
+                }
             })
             leaderboard.value = fetched
             localStorage.setItem('sm_leaderboard', JSON.stringify(fetched))
 
-            // Update myStats jika ada di top 10
+            // Update myStats jika saya ada di list
             const me = fetched.find(u => u.id === authStore.userId)
             if (me) {
                 myStats.value = me
                 localStorage.setItem('sm_my_stats', JSON.stringify(me))
             }
+        }, (error) => {
+            console.error('[Leaderboard] Error:', error)
         })
     }
 
@@ -534,6 +570,7 @@ export const useCommunityStore = defineStore('community', () => {
         onlineUsers,
         onlineCount,
         leaderboard,
+        leaderboardType,
         myStats,
         communityMembers,
         isLoading,
@@ -547,7 +584,8 @@ export const useCommunityStore = defineStore('community', () => {
         top10,
         initialize,
         cleanup,
-        fetchLeaderboard: () => { },
+        fetchLeaderboard: subscribeLeaderboard,
+        subscribeLeaderboard,
         fetchMyStats,
         addXp,
         subscribeChat,

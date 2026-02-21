@@ -1,300 +1,191 @@
 <template>
-  <div class="leaderboard-widget">
-    <!-- Header -->
-    <div class="lb-header">
-      <h3 class="lb-title">
-        <span class="lb-icon">🏆</span>
-        Leaderboard Global
-      </h3>
-      <span class="lb-badge">Realtime</span>
-    </div>
-
-    <!-- My Rank -->
-    <div v-if="communityStore.myStats" class="my-rank-card">
-      <div class="my-rank-left">
-        <img 
-          :src="communityStore.myStats.avatar_url || defaultAvatar" 
-          :alt="communityStore.myStats.display_name"
-          class="my-rank-avatar"
-        />
-        <div class="my-rank-info">
-          <span class="my-rank-name">{{ communityStore.myStats.display_name || 'Kamu' }}</span>
-          <span class="my-rank-level">Level {{ communityStore.myLevel }}</span>
+  <div class="bg-white/10 dark:bg-slate-900/40 backdrop-blur-3xl rounded-[2.5rem] border border-white/20 dark:border-white/5 overflow-hidden shadow-2xl flex flex-col h-full min-h-[500px]">
+    
+    <!-- Header: Premium Glass Style -->
+    <div class="p-6 pb-2">
+      <div class="flex items-center justify-between mb-6">
+        <div>
+            <h3 class="text-xl font-black text-slate-800 dark:text-white flex items-center gap-2">
+                <span class="text-2xl">🏆</span>
+                Leaderboard
+            </h3>
+            <p class="text-[10px] text-slate-500 dark:text-gray-400 uppercase font-black tracking-[0.2em]">Klasemen Umat Terbaik</p>
+        </div>
+        <div class="flex items-center gap-1.5 px-3 py-1.5 bg-green-500/10 rounded-full border border-green-500/20">
+            <span class="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span>
+            <span class="text-[9px] font-black text-green-600 dark:text-green-400 uppercase">Live Update</span>
         </div>
       </div>
-      <div class="my-rank-right">
-        <span class="my-rank-xp">{{ formatNumber(communityStore.myXp) }}</span>
-        <span class="my-rank-label">Poin</span>
+
+      <!-- Tabs / Toggle -->
+      <div class="flex bg-slate-100 dark:bg-white/5 p-1 rounded-2xl border border-slate-200 dark:border-white/5">
+        <button 
+            @click="communityStore.subscribeLeaderboard('all-time')"
+            class="flex-1 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all duration-300"
+            :class="communityStore.leaderboardType === 'all-time' 
+                ? 'bg-white dark:bg-slate-800 text-green-600 dark:text-green-400 shadow-md scale-[1.02]' 
+                : 'text-slate-400 hover:text-slate-600 dark:hover:text-gray-300'">
+            Top Selamanya
+        </button>
+        <button 
+            @click="communityStore.subscribeLeaderboard('weekly')"
+            class="flex-1 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all duration-300"
+            :class="communityStore.leaderboardType === 'weekly' 
+                ? 'bg-white dark:bg-slate-800 text-green-600 dark:text-green-400 shadow-md scale-[1.02]' 
+                : 'text-slate-400 hover:text-slate-600 dark:hover:text-gray-300'">
+            Top Mingguan
+        </button>
       </div>
     </div>
 
-    <!-- Top 10 List -->
-    <div class="lb-list">
-      <transition-group name="lb-item">
-        <div
-          v-for="(user, index) in communityStore.top10"
-          :key="user.id"
-          class="lb-item"
-          :class="{ 'lb-item--me': user.id === authStore.userId }"
-        >
-          <!-- Rank Badge -->
-          <div class="lb-rank" :class="`lb-rank--${index + 1}`">
-            <span v-if="index === 0">🥇</span>
-            <span v-else-if="index === 1">🥈</span>
-            <span v-else-if="index === 2">🥉</span>
-            <span v-else>{{ index + 1 }}</span>
-          </div>
-
-          <!-- User Info -->
-          <img 
-            :src="user.avatar_url || defaultAvatar" 
-            :alt="user.display_name"
-            class="lb-avatar"
-          />
-          <div class="lb-user-info">
-            <span class="lb-username">{{ user.display_name || user.username }}</span>
-            <span class="lb-meta">
-              Lv.{{ user.level }} · {{ user.city_name || 'Belum set kota' }}
-            </span>
-          </div>
-
-          <!-- Points -->
-          <div class="lb-points">
-            <span class="lb-points-value">{{ formatNumber(user.total_points) }}</span>
-            <span class="lb-points-label">pts</span>
-          </div>
+    <!-- My Position (Sticky/Featured) -->
+    <div v-if="communityStore.myStats" class="px-6 py-4">
+        <div class="bg-gradient-to-r from-green-600 to-emerald-700 p-4 rounded-3xl shadow-lg shadow-green-500/20 flex items-center justify-between border border-white/20 text-white">
+            <div class="flex items-center gap-3">
+                <div class="relative">
+                    <img :src="communityStore.myStats.avatar_url || defaultAvatar" class="w-12 h-12 rounded-2xl object-cover border-2 border-white/30" />
+                    <div class="absolute -bottom-1 -right-1 w-6 h-6 bg-white rounded-lg flex items-center justify-center text-[10px] font-black text-green-700 shadow-sm border border-green-100">
+                        {{ getMyRank }}
+                    </div>
+                </div>
+                <div>
+                    <h4 class="text-xs font-black uppercase tracking-tight">{{ communityStore.myStats.display_name || 'Hamba Allah' }}</h4>
+                    <p class="text-[10px] font-bold opacity-80 uppercase">Level {{ currentLevel(communityStore.myStats) }}</p>
+                </div>
+            </div>
+            <div class="text-right">
+                <span class="block text-lg font-black leading-none">{{ formatNumber(currentXP(communityStore.myStats)) }}</span>
+                <span class="text-[9px] font-black uppercase opacity-70">Poin</span>
+            </div>
         </div>
-      </transition-group>
+    </div>
 
-      <div v-if="communityStore.top10.length === 0" class="lb-empty">
-        <span>Belum ada data leaderboard</span>
-      </div>
+    <!-- Leaderboard List -->
+    <div class="flex-1 overflow-y-auto px-6 pb-6 custom-scrollbar space-y-3 pt-2">
+        <transition-group name="list">
+            <div v-for="(user, index) in communityStore.leaderboard" :key="user.id" 
+                class="group flex items-center gap-4 p-4 rounded-[1.8rem] border border-slate-50 dark:border-white/5 transition-all duration-500 hover:bg-white dark:hover:bg-white/5 hover:shadow-xl hover:shadow-slate-200/50 dark:hover:shadow-none hover:-translate-y-1"
+                :class="{'bg-green-500/5 border-green-500/10': user.id === authStore.userId}">
+                
+                <!-- Rank Visual -->
+                <div class="w-10 h-10 flex items-center justify-center flex-shrink-0">
+                    <div v-if="index === 0" class="w-10 h-10 bg-amber-100 dark:bg-amber-500/20 rounded-2xl flex items-center justify-center text-xl shadow-inner border border-amber-200/50">🥇</div>
+                    <div v-else-if="index === 1" class="w-10 h-10 bg-slate-100 dark:bg-slate-400/20 rounded-2xl flex items-center justify-center text-xl shadow-inner border border-slate-200/50">🥈</div>
+                    <div v-else-if="index === 2" class="w-10 h-10 bg-orange-100 dark:bg-orange-500/10 rounded-2xl flex items-center justify-center text-xl shadow-inner border border-orange-200/50">🥉</div>
+                    <span v-else class="text-sm font-black text-slate-300 dark:text-gray-600 italic">#{{ index + 1 }}</span>
+                </div>
+
+                <!-- User Data -->
+                <div class="flex items-center gap-3 flex-1 min-w-0">
+                    <div class="relative">
+                        <img :src="user.avatar_url || defaultAvatar" class="w-11 h-11 rounded-2xl object-cover shadow-md group-hover:scale-110 transition-transform duration-500" />
+                        <span v-if="user.isOnline" class="absolute -top-1 -right-1 w-3 h-3 bg-green-500 rounded-full border-2 border-white dark:border-slate-900 shadow-sm animate-pulse"></span>
+                    </div>
+                    <div class="min-w-0">
+                        <div class="flex items-center gap-1.5">
+                            <span class="text-[13px] font-black text-slate-800 dark:text-white truncate group-hover:text-green-600 dark:group-hover:text-green-400 transition-colors">
+                                {{ user.display_name || user.username }}
+                            </span>
+                            <i v-if="user.role === 'admin'" class="fas fa-check-circle text-blue-500 text-[10px]" title="Admin Verified"></i>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <span class="text-[9px] font-black text-slate-400 bg-slate-50 dark:bg-white/5 px-2 py-0.5 rounded-md uppercase tracking-widest">
+                                Level {{ currentLevel(user) }}
+                            </span>
+                            <span v-if="user.city_name" class="text-[8px] text-slate-400 font-bold truncate">📍 {{ user.city_name }}</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Points info -->
+                <div class="text-right flex-shrink-0">
+                    <div class="text-sm font-black text-slate-900 dark:text-white flex items-center gap-1 justify-end">
+                        {{ formatNumber(currentXP(user)) }}
+                        <span class="w-2 h-2 rounded-full bg-amber-400"></span>
+                    </div>
+                    <span class="text-[8px] font-black text-slate-400 uppercase tracking-tighter">{{ communityStore.leaderboardType === 'all-time' ? 'XP Selamanya' : 'XP Mingguan' }}</span>
+                </div>
+            </div>
+        </transition-group>
+
+        <!-- Empty State -->
+        <div v-if="!communityStore.leaderboard.length && !communityStore.isLoading" class="text-center py-20">
+            <div class="w-20 h-20 bg-slate-50 dark:bg-white/5 rounded-full flex items-center justify-center mx-auto mb-4 text-slate-200 dark:text-gray-700">
+                <i class="fas fa-trophy text-3xl"></i>
+            </div>
+            <p class="text-sm font-bold text-slate-400">Belum ada pejuang di kriteria ini.</p>
+        </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { onMounted } from 'vue'
+import { computed, onMounted } from 'vue'
 import { useCommunityStore } from '@/stores/communityStore'
 import { useAuthStore } from '@/stores/authStore'
 
 const communityStore = useCommunityStore()
 const authStore = useAuthStore()
 
-const defaultAvatar = 'https://api.dicebear.com/7.x/thumbs/svg?seed=default&backgroundColor=6366f1'
+const defaultAvatar = 'https://api.dicebear.com/7.x/avataaars/svg?seed=Lucky&backgroundColor=b6e3f4'
 
 const formatNumber = (num) => {
   if (!num) return '0'
   return num.toLocaleString('id-ID')
 }
 
+// Helpers untuk mengambil field yang sesuai dengan tipe leaderboard aktif
+const currentXP = (user) => {
+    return communityStore.leaderboardType === 'all-time' 
+        ? (user.total_points || 0) 
+        : (user.weeklyXp || 0)
+}
+
+const currentLevel = (user) => {
+    return communityStore.leaderboardType === 'all-time' 
+        ? (user.level || 1) 
+        : (user.weeklyLevel || 1)
+}
+
+const getMyRank = computed(() => {
+    const index = communityStore.leaderboard.findIndex(u => u.id === authStore.userId)
+    if (index === -1) return '-'
+    return index + 1
+})
+
 onMounted(() => {
-  communityStore.fetchLeaderboard()
+  // Masih menggunakan type default 'all-time' saat dimuat
+  communityStore.subscribeLeaderboard('all-time')
 })
 </script>
 
 <style scoped>
-.leaderboard-widget {
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 20px;
-  padding: 20px;
-  backdrop-filter: blur(20px);
+.custom-scrollbar::-webkit-scrollbar {
+  width: 4px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(16, 185, 129, 0.2);
+  border-radius: 10px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(16, 185, 129, 0.4);
 }
 
-.lb-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 16px;
+/* Animations */
+.list-move,
+.list-enter-active,
+.list-leave-active {
+  transition: all 0.5s ease;
 }
-
-.lb-title {
-  font-size: 16px;
-  font-weight: 700;
-  color: #fff;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 0;
+.list-enter-from,
+.list-leave-to {
+  opacity: 0;
+  transform: translateX(-30px);
 }
-
-.lb-icon { font-size: 20px; }
-
-.lb-badge {
-  background: linear-gradient(135deg, #10b981, #059669);
-  color: white;
-  font-size: 10px;
-  font-weight: 700;
-  padding: 4px 10px;
-  border-radius: 20px;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  animation: pulse-glow 2s ease-in-out infinite;
+.list-leave-active {
+  position: absolute;
 }
-
-@keyframes pulse-glow {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4); }
-  50% { box-shadow: 0 0 0 8px rgba(16, 185, 129, 0); }
-}
-
-.my-rank-card {
-  background: linear-gradient(135deg, rgba(99, 102, 241, 0.2), rgba(139, 92, 246, 0.2));
-  border: 1px solid rgba(99, 102, 241, 0.3);
-  border-radius: 16px;
-  padding: 14px 16px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 16px;
-}
-
-.my-rank-left {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.my-rank-avatar {
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  object-fit: cover;
-  border: 2px solid rgba(99, 102, 241, 0.5);
-}
-
-.my-rank-info {
-  display: flex;
-  flex-direction: column;
-}
-
-.my-rank-name {
-  font-size: 14px;
-  font-weight: 700;
-  color: #fff;
-}
-
-.my-rank-level {
-  font-size: 11px;
-  color: rgba(255, 255, 255, 0.6);
-}
-
-.my-rank-right {
-  text-align: right;
-}
-
-.my-rank-xp {
-  display: block;
-  font-size: 20px;
-  font-weight: 800;
-  background: linear-gradient(135deg, #6366f1, #a78bfa);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-}
-
-.my-rank-label {
-  font-size: 10px;
-  color: rgba(255, 255, 255, 0.5);
-  text-transform: uppercase;
-}
-
-.lb-list {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.lb-item {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 10px 12px;
-  border-radius: 12px;
-  transition: all 0.3s ease;
-}
-
-.lb-item:hover {
-  background: rgba(255, 255, 255, 0.05);
-}
-
-.lb-item--me {
-  background: rgba(99, 102, 241, 0.1);
-  border: 1px solid rgba(99, 102, 241, 0.2);
-}
-
-.lb-rank {
-  width: 32px;
-  height: 32px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 14px;
-  font-weight: 800;
-  color: rgba(255, 255, 255, 0.5);
-  flex-shrink: 0;
-}
-
-.lb-rank--1, .lb-rank--2, .lb-rank--3 {
-  font-size: 20px;
-}
-
-.lb-avatar {
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  object-fit: cover;
-  flex-shrink: 0;
-}
-
-.lb-user-info {
-  flex: 1;
-  min-width: 0;
-}
-
-.lb-username {
-  display: block;
-  font-size: 13px;
-  font-weight: 600;
-  color: #fff;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.lb-meta {
-  font-size: 10px;
-  color: rgba(255, 255, 255, 0.4);
-}
-
-.lb-points {
-  text-align: right;
-  flex-shrink: 0;
-}
-
-.lb-points-value {
-  display: block;
-  font-size: 14px;
-  font-weight: 700;
-  color: #f59e0b;
-}
-
-.lb-points-label {
-  font-size: 9px;
-  color: rgba(255, 255, 255, 0.4);
-  text-transform: uppercase;
-}
-
-.lb-empty {
-  text-align: center;
-  padding: 32px 16px;
-  color: rgba(255, 255, 255, 0.4);
-  font-size: 13px;
-}
-
-/* Transition animations */
-.lb-item-move { transition: transform 0.5s ease; }
-.lb-item-enter-active { transition: all 0.3s ease; }
-.lb-item-leave-active { transition: all 0.3s ease; position: absolute; }
-.lb-item-enter-from { opacity: 0; transform: translateX(-20px); }
-.lb-item-leave-to { opacity: 0; transform: translateX(20px); }
 </style>
