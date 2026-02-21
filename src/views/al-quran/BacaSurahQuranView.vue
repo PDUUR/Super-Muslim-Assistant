@@ -158,20 +158,43 @@ const bookmarkAyat = (nomorSurah, surahName, ayat) => {
 };
 
 const handleScrollToAnchor = () => {
-    const hash = window.location.hash || (localStorage.getItem('anchor-ayat') && window.location.href.includes('surah/') ? '#' + localStorage.getItem('anchor-ayat').split('#')[1] : null);
-    if (hash) {
-        const id = hash.replace('#', '');
+    // Ambil anchor dari URL atau localStorage
+    const urlHash = window.location.hash;
+    const storedAnchor = localStorage.getItem('anchor-ayat');
+    
+    let targetAyatId = null;
+
+    if (urlHash) {
+        // 1. Prioritaskan ayat dari URL hash (misal: .../surah/1#5)
+        targetAyatId = urlHash.replace('#', '');
+    } else if (storedAnchor && surah.value.nomor) {
+        // 2. Gunakan data dari localStorage: format "nomorSurah#nomorAyat"
+        const [storedSurahId, storedAyatId] = storedAnchor.split('#');
+        
+        // HANYA scroll jika ID surah yang dibuka sama dengan yang tersimpan
+        if (parseInt(storedSurahId) === surah.value.nomor) {
+            targetAyatId = storedAyatId;
+        }
+    }
+
+    if (targetAyatId) {
+        // Beri jeda sedikit agar DOM ayat sudah benar-benar siap
         setTimeout(() => {
-            const el = document.getElementById(id);
-            if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            const el = document.getElementById(targetAyatId);
+            if (el) {
+                el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
         }, 800);
+    } else {
+        // 3. Jika tidak ada anchor atau surah tidak cocok, pastikan layar di paling atas
+        window.scrollTo({ top: 0, behavior: 'smooth' });
     }
 };
 
-onMounted(() => {
-    fetchSurah(route.params.id).then(() => {
-        handleScrollToAnchor();
-    });
+onMounted(async () => {
+    await fetchSurah(route.params.id);
+    handleScrollToAnchor();
+    
     window.addEventListener('ayat-changed', handleAyatChanged);
     window.addEventListener('surah-changed', handleSurahChanged);
 });
