@@ -110,7 +110,7 @@ const cardStyle = computed(() => {
 });
 
 onMounted(() => {
-    notificationStore.startSedekahReminder();
+    // Sedekah reminder disabled by user request
 });
 </script>
 

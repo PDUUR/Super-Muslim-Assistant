@@ -4,7 +4,6 @@ import { ref } from 'vue';
 export const useNotificationStore = defineStore('notification', () => {
     const isVisible = ref(false);
     const currentMessage = ref(null);
-    let intervalId = null;
 
     const categories = {
         azan: {
@@ -67,39 +66,14 @@ export const useNotificationStore = defineStore('notification', () => {
 
     const snooze = () => {
         closeNotification();
-        // The 3-minute interval will bring another sedekah reminder anyway if it's the type.
     };
 
-    const startSedekahReminder = () => {
-        if (intervalId) return;
-
-        intervalId = setInterval(() => {
-            const now = new Date();
-            const hours = now.getHours();
-
-            // 05:00 - 23:00 WIB
-            if (hours >= 5 && hours < 23) {
-                if (!isVisible.value) {
-                    showNotification('sedekah');
-                }
-            }
-        }, 3 * 60 * 1000); // 3 minutes
-    };
-
-    const stopSedekahReminder = () => {
-        if (intervalId) {
-            clearInterval(intervalId);
-            intervalId = null;
-        }
-    };
 
     return {
         isVisible,
         currentMessage,
         showNotification,
         closeNotification,
-        snooze,
-        startSedekahReminder,
-        stopSedekahReminder
+        snooze
     };
 });
