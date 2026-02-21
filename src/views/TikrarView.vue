@@ -40,13 +40,10 @@ let audioChunks = [];
 let currentStream = null;        // Referensi stream mikrofon
 let recordingTimer = null;       // Timer hitung durasi rekaman
 
-// Token diambil dari file .env untuk keamanan (VITE_HF_TOKEN)
-const HF_TOKEN = import.meta.env.VITE_HF_TOKEN;
-
-// Model khusus bacaan Al-Qur'an — lebih akurat daripada Whisper umum
+// Model khusus bacaan Al-Qur'an (diproses di serverless proxy)
 const HF_MODEL = 'tarteel-ai/whisper-base-ar-quran';
-// Fallback: model umum jika model Qur'an tidak tersedia
 const HF_MODEL_FALLBACK = 'openai/whisper-large-v3';
+// Token tersimpan aman di server (process.env.HUGGINGFACE_TOKEN)
 
 // Deteksi MIME type yang didukung browser
 function getSupportedMimeType() {
@@ -269,68 +266,56 @@ function answerWrong() {
   checkAnswer(false);
 }
 
-// ─── Kirim Audio ke Hugging Face API ──────────────────────────
-async function transcribeAudio(audioBlob, modelUrl) {
-  const url = modelUrl || `https://api-inference.huggingface.co/models/${HF_MODEL}`;
-  
+// ─── Kirim Audio ke Vercel Serverless Proxy (/api/huggingface) ──
+async function transcribeAudio(audioBlob, model) {
+  const selectedModel = model || HF_MODEL;
+  // Kirim ke proxy serverless (same-origin, tidak ada CORS!)
+  const proxyUrl = `/api/huggingface?model=${encodeURIComponent(selectedModel)}`;
+
   try {
-    const response = await fetch(url, {
+    const response = await fetch(proxyUrl, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${HF_TOKEN}`,
+        'Content-Type': audioBlob.type || 'audio/webm',
       },
       body: audioBlob, // Kirim blob langsung sebagai binary body
-      signal: AbortSignal.timeout(45000), // Timeout 45 detik
+      signal: AbortSignal.timeout(60000), // Timeout 60 detik (termasuk cold start)
     });
+
+    const result = await response.json().catch(() => ({}));
 
     // Model sedang loading (cold start) — HTTP 503
     if (response.status === 503) {
-      const body = await response.json().catch(() => ({}));
-      const wait = body.estimated_time ? Math.ceil(body.estimated_time) : 30;
+      const wait = result.estimated_time || 30;
       errorMessage.value = `⏳ Model AI sedang dipersiapkan (~${wait} detik). Tunggu sebentar lalu coba lagi.`;
       setTimeout(() => errorMessage.value = '', 8000);
       return '';
     }
 
-    // Error lainnya
-    if (!response.ok) {
-      const body = await response.json().catch(() => ({}));
-      console.error('[HF API] HTTP Error:', response.status, body);
+    // Error dari proxy atau HuggingFace
+    if (!response.ok || result.error) {
+      console.error('[Proxy] Error:', response.status, result);
 
-      // Jika model Qur'an gagal, coba fallback ke Whisper umum
-      if (modelUrl !== `https://api-inference.huggingface.co/models/${HF_MODEL_FALLBACK}`) {
-        console.warn('[HF API] Model Qur\'an gagal, mencoba fallback Whisper...');
-        return await transcribeAudio(audioBlob, `https://api-inference.huggingface.co/models/${HF_MODEL_FALLBACK}`);
+      // Fallback ke Whisper umum jika model Qur'an gagal
+      if (selectedModel !== HF_MODEL_FALLBACK) {
+        console.warn('[Proxy] Model Qur\'an gagal, mencoba fallback...');
+        return await transcribeAudio(audioBlob, HF_MODEL_FALLBACK);
       }
 
-      errorMessage.value = `API Error (${response.status}): ${body.error || 'Tidak diketahui'}. Coba lagi.`;
+      errorMessage.value = `Error: ${result.error || 'Gagal memproses'}. Coba lagi.`;
       setTimeout(() => errorMessage.value = '', 5000);
       return '';
     }
 
-    const result = await response.json();
-
-    // Response error dari model
-    if (result.error) {
-      // Jika model Qur'an error, fallback
-      if (modelUrl !== `https://api-inference.huggingface.co/models/${HF_MODEL_FALLBACK}`) {
-        console.warn('[HF API] Model Qur\'an error, fallback...', result.error);
-        return await transcribeAudio(audioBlob, `https://api-inference.huggingface.co/models/${HF_MODEL_FALLBACK}`);
-      }
-      errorMessage.value = `API: ${result.error}`;
-      setTimeout(() => errorMessage.value = '', 5000);
-      return '';
-    }
-
-    console.log('[HF API] Transkripsi berhasil:', result.text);
+    console.log('[Proxy] Transkripsi berhasil:', result.text);
     return result.text || '';
   } catch (error) {
     if (error.name === 'TimeoutError' || error.name === 'AbortError') {
-      errorMessage.value = 'Waktu habis. Periksa koneksi internet lalu coba lagi.';
+      errorMessage.value = 'Waktu habis. Periksa koneksi internet.';
     } else {
-      errorMessage.value = 'Gagal memproses suara. Pastikan koneksi internet aktif.';
+      errorMessage.value = 'Gagal menghubungi server. Pastikan koneksi internet aktif.';
     }
-    console.error('[HF API] Fetch Error:', error);
+    console.error('[Proxy] Fetch Error:', error);
     setTimeout(() => errorMessage.value = '', 5000);
     return '';
   }
