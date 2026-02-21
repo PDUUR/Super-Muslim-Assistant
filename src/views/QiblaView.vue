@@ -2,9 +2,6 @@
   <div class="w-full min-h-screen mx-auto pb-24 text-left bg-gradient-to-b from-slate-50 to-slate-100 dark:from-slate-950 dark:to-slate-900 transition-colors duration-500">
     <!-- Header -->
     <div class="mb-4 pt-10 px-6 text-center">
-      <div class="inline-block px-4 py-1.5 mb-4 rounded-full bg-[#A3C7B6]/10 border border-[#A3C7B6]/20 backdrop-blur-md">
-        <span class="text-[10px] font-black uppercase tracking-[0.2em] text-[#A3C7B6]">Professional Tools</span>
-      </div>
       <h2 class="text-4xl font-black text-slate-800 dark:text-white mb-2 tracking-tight">Kiblat Finder</h2>
       <p class="text-[13px] text-slate-500 font-medium leading-relaxed max-w-[280px] mx-auto italic">
         Akurasi presisi untuk panduan ibadah harianmu.
