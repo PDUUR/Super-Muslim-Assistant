@@ -1,15 +1,15 @@
 <template>
   <div class="w-full min-h-screen mx-auto pb-24 text-left bg-gradient-to-b from-slate-50 to-slate-100 dark:from-slate-950 dark:to-slate-900 transition-colors duration-500">
     <!-- Header Hero -->
-    <div class="mb-6 p-8 bg-white/60 dark:bg-slate-900/60 backdrop-blur-2xl rounded-b-[3rem] shadow-xl border-b border-white/40 dark:border-white/5 relative overflow-hidden">
+    <div class="mb-6 p-8 bg-white/60 dark:bg-slate-900/60 backdrop-blur-2xl rounded-b-[3rem] shadow-xl border-b border-white/40 dark:border-white/5 relative overflow-hidden text-center">
         <div class="absolute -right-16 -top-16 w-48 h-48 bg-green-500/10 rounded-full blur-3xl"></div>
         <div class="absolute -left-10 bottom-0 w-32 h-32 bg-blue-500/10 rounded-full blur-2xl"></div>
         
         <h1 class="text-3xl font-black text-slate-900 dark:text-white mb-6 tracking-tight">Cari Masjid</h1>
         
-        <div class="flex flex-col gap-4">
+        <div class="flex flex-col gap-4 items-center">
             <!-- Status Badge -->
-            <div class="flex items-center gap-2 px-4 py-2 bg-[#A3C7B6]/10 self-start rounded-full border border-[#A3C7B6]/20">
+            <div class="flex items-center gap-2 px-4 py-2 bg-[#A3C7B6]/10 rounded-full border border-[#A3C7B6]/20">
                 <span class="relative flex h-2 w-2">
                     <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
                     <span class="relative inline-flex rounded-full h-2 w-2 bg-[#A3C7B6]"></span>
