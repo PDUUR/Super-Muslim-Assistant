@@ -28,7 +28,8 @@ import {
     getDoc,
     setDoc,
     updateDoc,
-    onSnapshot
+    onSnapshot,
+    serverTimestamp
 } from 'firebase/firestore'
 
 
@@ -199,6 +200,8 @@ export const useAuthStore = defineStore('auth', () => {
                     messages_sent: 0,
                     login_count: 1
                 },
+                isOnline: true,
+                lastActive: serverTimestamp(),
                 createdAt: new Date().toISOString()
             }
 
@@ -283,6 +286,22 @@ export const useAuthStore = defineStore('auth', () => {
     }
 
     /**
+     * Update Online Status (Firestore)
+     */
+    const updateOnlineStatus = async (status) => {
+        if (!user.value) return
+        try {
+            const docRef = doc(db, "users", user.value.uid)
+            await updateDoc(docRef, {
+                isOnline: status,
+                lastActive: serverTimestamp()
+            })
+        } catch (err) {
+            console.warn('[Auth] Gagal update status online:', err.message)
+        }
+    }
+
+    /**
      * Refresh Profile (Manual fetch jika perlu)
      */
     const refreshProfile = async () => {
@@ -310,5 +329,6 @@ export const useAuthStore = defineStore('auth', () => {
         updateProfile,
         refreshProfile,
         resetPassword,
+        updateOnlineStatus,
     }
 })

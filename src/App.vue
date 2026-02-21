@@ -119,10 +119,18 @@ const handleEnter = () => {
     isLanding.value = false;
     if (!authStore.isAuthenticated) {
         router.push('/auth');
+    } else {
+        authStore.updateOnlineStatus(true);
     }
     setTimeout(() => {
         showChangelog();
     }, 2000);
+};
+
+const handleVisibilityChange = () => {
+    if (authStore.isAuthenticated) {
+        authStore.updateOnlineStatus(document.visibilityState === 'visible');
+    }
 };
 
 onMounted(async () => {
@@ -132,6 +140,9 @@ onMounted(async () => {
   if (authStore.isAuthenticated) {
     isLanding.value = false;
     communityStore.initialize();
+    
+    // Set Online
+    authStore.updateOnlineStatus(true);
     
     // Check Streak
     ibadahStore.checkLoginStreak();
@@ -152,12 +163,19 @@ onMounted(async () => {
     isLanding.value = true;
     communityStore.cleanup();
   });
+
+  // Online Presence Listeners
+  document.addEventListener('visibilitychange', handleVisibilityChange);
+  window.addEventListener('beforeunload', () => authStore.updateOnlineStatus(false));
 });
 
 onUnmounted(() => {
   communityStore.cleanup();
   if (notificationTimer) clearInterval(notificationTimer);
   if (sessionTimer) clearInterval(sessionTimer);
+  
+  document.removeEventListener('visibilitychange', handleVisibilityChange);
+  if (authStore.isAuthenticated) authStore.updateOnlineStatus(false);
 });
 </script>
 

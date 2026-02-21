@@ -59,13 +59,23 @@
                   </div>
                 </div>
               </td>
-              <td class="px-6 py-5 text-center">
-                <div class="flex flex-col items-center gap-1">
-                   <span v-if="user.deleted_at" class="bg-rose-100 dark:bg-rose-500/20 text-rose-600 dark:text-rose-400 px-2 py-1 rounded-xl text-[9px] font-black uppercase tracking-widest">DELETED</span>
-                   <span v-else-if="user.is_blocked" class="bg-amber-100 dark:bg-amber-500/20 text-amber-600 dark:text-amber-400 px-2 py-1 rounded-xl text-[9px] font-black uppercase tracking-widest">BLOCKED</span>
-                   <span v-else class="bg-emerald-100 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 px-2 py-1 rounded-xl text-[9px] font-black uppercase tracking-widest">ACTIVE</span>
+              <td class="px-6 py-5">
+                <div class="flex flex-col items-center gap-1.5">
+                   <!-- Online/Offline Indicator -->
+                   <div v-if="!user.deleted_at && !user.is_blocked" class="flex items-center gap-1.5 px-3 py-1 rounded-full border" 
+                        :class="user.isOnline ? 'bg-green-500/10 border-green-500/20 text-green-600' : 'bg-slate-100 border-slate-200 text-slate-400'">
+                      <span class="w-1.5 h-1.5 rounded-full" :class="user.isOnline ? 'bg-green-500 animate-pulse' : 'bg-slate-300'"></span>
+                      <span class="text-[9px] font-black uppercase tracking-widest">{{ user.isOnline ? 'Online' : 'Offline' }}</span>
+                   </div>
+
+                   <!-- Role/Restricted Status -->
+                   <span v-if="user.deleted_at" class="bg-rose-100 dark:bg-rose-500/20 text-rose-600 dark:text-rose-400 px-2.5 py-1 rounded-xl text-[9px] font-black uppercase tracking-widest">DELETED</span>
+                   <span v-else-if="user.is_blocked" class="bg-amber-100 dark:bg-amber-500/20 text-amber-600 dark:text-amber-400 px-2.5 py-1 rounded-xl text-[9px] font-black uppercase tracking-widest">BLOCKED</span>
                    
-                   <p v-if="user.last_seen_at" class="text-[8px] text-slate-400 uppercase font-bold tracking-tighter">Seen: {{ formatDate(user.last_seen_at) }}</p>
+                   <!-- Last Seen Info -->
+                   <p v-if="!user.isOnline" class="text-[8px] text-slate-400 uppercase font-black tracking-tight mt-0.5">
+                      Seen: {{ formatLastSeen(user.lastActive) }}
+                   </p>
                 </div>
               </td>
               <td class="px-6 py-5">
@@ -279,6 +289,21 @@ const getAvatarColor = (name) => {
 const formatDate = (dateStr) => {
     if (!dateStr) return '-'
     const date = new Date(dateStr)
+    return date.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })
+}
+
+const formatLastSeen = (timestamp) => {
+    if (!timestamp) return 'Belum pernah'
+    
+    // Firestore timestamp object handling
+    const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp)
+    const now = new Date()
+    const diff = Math.floor((now - date) / 1000) // seconds
+
+    if (diff < 60) return 'Baru saja'
+    if (diff < 3600) return `${Math.floor(diff / 60)} menit lalu`
+    if (diff < 86400) return `${Math.floor(diff / 3600)} jam lalu`
+    
     return date.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })
 }
 
