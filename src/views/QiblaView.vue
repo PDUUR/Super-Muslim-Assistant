@@ -30,7 +30,7 @@
       </div>
 
       <!-- Arrow Container (The rotating part) -->
-      <div class="absolute inset-0 flex items-center justify-center transition-transform duration-300 ease-out"
+      <div class="absolute inset-0 flex items-center justify-center transition-transform duration-100 ease-linear"
            :style="{ transform: `rotate(${qiblaDirection - heading}deg)` }">
         
         <!-- The Qibla Arrow (Image Ref: Gold color, sharp point) -->
@@ -127,7 +127,8 @@ const initCompass = async () => {
     },
     (err) => {
       error.value = "Izin lokasi ditolak. Aktifkan GPS untuk akurasi.";
-    }
+    },
+    { enableHighAccuracy: true }
   );
 };
 
@@ -146,23 +147,36 @@ const startOrientationTracking = async () => {
       error.value = "Gagal mengakses sensor.";
     }
   } else {
-    // Android/Non-iOS
-    window.addEventListener('deviceorientationabsolute', handleOrientation, true);
-    // Fallback if absolute not available
-    window.addEventListener('deviceorientation', handleOrientation, true);
+    // Android/Non-iOS: Prioritize deviceorientationabsolute
+    if ('ondeviceorientationabsolute' in window) {
+      window.addEventListener('deviceorientationabsolute', handleOrientation, true);
+    } else {
+      window.addEventListener('deviceorientation', handleOrientation, true);
+    }
   }
   isInitialized.value = true;
 };
 
 const handleOrientation = (event) => {
+  let newData = 0;
+
   // webkitCompassHeading is specific to iOS and very accurate
   if (event.webkitCompassHeading) {
-    heading.value = event.webkitCompassHeading;
+    newData = event.webkitCompassHeading;
   } else if (event.alpha !== null) {
     // Android logic: alpha is rotation around Z axis
-    // Note: This might need normalization based on beta/gamma if not 'deviceorientationabsolute'
-    heading.value = 360 - event.alpha;
+    // 360 - event.alpha ensures the zero point is the top of the phone
+    newData = 360 - event.alpha;
   }
+
+  // Smoothing Filter (Low-pass)
+  // Handle wrap-around (0/360) transitions
+  let diff = newData - heading.value;
+  if (diff > 180) diff -= 360;
+  if (diff < -180) diff += 360;
+
+  // Apply smoothing factor (0.3 as requested)
+  heading.value = (heading.value + diff * 0.3 + 360) % 360;
 };
 
 onUnmounted(() => {
