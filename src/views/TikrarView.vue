@@ -246,7 +246,10 @@ function answerWrong() {
 async function transcribeAudio(audioBlob) {
   isTranscribing.value = true;
   const API_URL = "https://api-inference.huggingface.co/models/openai/whisper-large-v3";
-  
+
+  // Buat timeout 30 detik agar UI tidak macet selamanya
+  const timeoutSignal = AbortSignal.timeout(30000);
+
   try {
     const response = await fetch(API_URL, {
       method: "POST",
@@ -254,47 +257,86 @@ async function transcribeAudio(audioBlob) {
         "Authorization": `Bearer ${HF_TOKEN}`,
         "Content-Type": "audio/wav",
       },
-      body: audioBlob
+      body: audioBlob,
+      signal: timeoutSignal,
     });
-    
+
+    // Model HuggingFace gratis kadang butuh warming up, mengembalikan 503
+    if (response.status === 503) {
+      errorMessage.value = '⏳ Model AI sedang loading (±30 detik). Coba rekam ulang setelah menunggu.';
+      setTimeout(() => errorMessage.value = '', 6000);
+      return "";
+    }
+
+    if (!response.ok) {
+      errorMessage.value = `Gagal memanggil API (${response.status}). Coba lagi.`;
+      setTimeout(() => errorMessage.value = '', 4000);
+      return "";
+    }
+
     const result = await response.json();
+    // Whisper bisa mengembalikan { text: "..." } atau array error
+    if (result.error) {
+      errorMessage.value = `API Error: ${result.error}`;
+      setTimeout(() => errorMessage.value = '', 5000);
+      return "";
+    }
     return result.text || "";
   } catch (error) {
+    if (error.name === 'TimeoutError' || error.name === 'AbortError') {
+      errorMessage.value = 'Waktu habis (timeout). Coba rekam ulang.';
+    } else {
+      errorMessage.value = 'Gagal memproses suara. Pastikan koneksi internet aktif.';
+    }
     console.error('[Speech API] Error:', error);
-    errorMessage.value = 'Gagal memproses suara. Coba lagi.';
-    setTimeout(() => errorMessage.value = '', 3000);
+    setTimeout(() => errorMessage.value = '', 4000);
     return "";
   } finally {
+    // SELALU reset isTranscribing, apapun yang terjadi
     isTranscribing.value = false;
   }
 }
 
 async function startListening() {
+  if (isListening.value) return; // Cegah double-click
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     mediaRecorder = new MediaRecorder(stream);
     audioChunks = [];
 
     mediaRecorder.ondataavailable = (event) => {
-      audioChunks.push(event.data);
+      if (event.data.size > 0) audioChunks.push(event.data);
     };
 
     mediaRecorder.onstop = async () => {
-      const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
-      const transcription = await transcribeAudio(audioBlob);
-      
-      if (transcription) {
-        speechText.value = transcription;
-        const accuracy = compareSpeechToText(transcription, currentAyah.value.teksArab);
-        speechAccuracy.value = Math.round(accuracy);
+      // Hentikan semua track agar ikon mikrofon browser hilang
+      stream.getTracks().forEach(track => track.stop());
 
-        if (accuracy >= 80) {
-          checkAnswer(true);
-        } else {
-          checkAnswer(false);
+      const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+
+      try {
+        const transcription = await transcribeAudio(audioBlob);
+
+        if (transcription && transcription.trim()) {
+          speechText.value = transcription;
+          const accuracy = compareSpeechToText(transcription, currentAyah.value.teksArab);
+          speechAccuracy.value = Math.round(accuracy);
+
+          if (accuracy >= 80) {
+            checkAnswer(true);
+          } else {
+            checkAnswer(false);
+          }
+        } else if (!errorMessage.value) {
+          // Tidak ada transkripsi dan tidak ada pesan error sebelumnya
+          errorMessage.value = 'Suara tidak terdeteksi atau tidak jelas. Coba lagi.';
+          setTimeout(() => errorMessage.value = '', 4000);
         }
+      } finally {
+        // SELALU reset state, apapun yang terjadi
+        isListening.value = false;
+        isRecording.value = false;
       }
-      isListening.value = false;
     };
 
     mediaRecorder.start();
@@ -302,17 +344,29 @@ async function startListening() {
     isListening.value = true;
     speechText.value = '';
     speechAccuracy.value = null;
+    errorMessage.value = '';
   } catch (error) {
-    console.error('[Speech] Access denied:', error);
-    errorMessage.value = 'Izin mikrofon ditolak.';
-    setTimeout(() => errorMessage.value = '', 3000);
+    console.error('[Speech] Error:', error);
+    if (error.name === 'NotAllowedError') {
+      errorMessage.value = 'Izin mikrofon ditolak. Aktifkan akses mikrofon di browser.';
+    } else {
+      errorMessage.value = 'Tidak dapat mengakses mikrofon. Coba lagi.';
+    }
+    setTimeout(() => errorMessage.value = '', 5000);
+    isListening.value = false;
+    isRecording.value = false;
   }
 }
 
 function stopListening() {
   if (mediaRecorder && isRecording.value) {
-    mediaRecorder.stop();
-    isRecording.value = false;
+    try {
+      mediaRecorder.stop(); // akan memicu onstop → reset isListening
+    } catch (e) {
+      // Jika stop() gagal, reset manual
+      isListening.value = false;
+      isRecording.value = false;
+    }
   }
 }
 
