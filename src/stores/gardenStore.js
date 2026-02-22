@@ -34,7 +34,8 @@ export const useGardenStore = defineStore('garden', () => {
             rain: false,
             butterflies: false,
             fireflies: false,
-            goldenFruit: false
+            goldenFruit: false,
+            weatherIntensity: 'clear' // heavy, light, clear
         },
         lastWatered: null, // Timestamp
         lastMaintenanceDate: null // Tanggal pemeliharaan terakhir (YYYY-MM-DD)
@@ -92,6 +93,9 @@ export const useGardenStore = defineStore('garden', () => {
 
             // Pantau Kesehatan Ibadah (Maintenance)
             await monitorHealthDiscipline()
+
+            // Sinkronisasi Cuaca Berdasarkan Geolocation
+            await syncWeatherSensor()
 
             // Evaluasi Environment Effects saat load
             evaluateEnvironment()
@@ -216,6 +220,58 @@ export const useGardenStore = defineStore('garden', () => {
         // Update tanggal maintenance terakhir ke hari ini
         gardenData.value.lastMaintenanceDate = todayKey
         await saveGarden()
+    }
+
+    /**
+     * Sinkronisasi Cuaca dari Geolocation & API (Stasiun Meteorologi Pribadi)
+     */
+    const syncWeatherSensor = async () => {
+        if (!navigator.geolocation) {
+            console.warn('[Garden] Geolocation tidak didukung');
+            return;
+        }
+
+        // Gunakan timeout untuk koordinat agar tidak membeku jika diblokir
+        navigator.geolocation.getCurrentPosition(async (pos) => {
+            const { latitude, longitude } = pos.coords;
+
+            try {
+                // Catatan: Disarankan menggunakan environment variable VITE_WEATHER_API_KEY
+                // Untuk demo, kita asumsikan sensor terhubung ke OpenWeatherMap
+                const apiKey = '85e0bf595449755b46e3989c670a59ed'; // Harap ganti dengan key valid
+                const res = await fetch(`https://api.openweathermap.org/data/2.5/weather?lat=${latitude}&lon=${longitude}&appid=${apiKey}`);
+                const data = await res.json();
+
+                if (data.weather && data.weather[0]) {
+                    const code = data.weather[0].id;
+                    let intensity = 'clear';
+
+                    // MAPPING LOGIC (Sesuai Ketentuan)
+                    if ([502, 503, 504, 522].includes(code)) {
+                        intensity = 'heavy';
+                    } else if ((code >= 500 && code <= 501) || (code >= 300 && code <= 321)) {
+                        intensity = 'light';
+                    } else if (code === 800) {
+                        intensity = 'clear';
+                    } else if (code > 800) {
+                        // Fallback: Cloudy dll dianggap clear tapi bisa dikembangkan
+                        intensity = 'clear';
+                    }
+
+                    gardenData.value.environment.weatherIntensity = intensity;
+
+                    // Jika hujan (heavy/light), aktifkan efek rain dasar
+                    gardenData.value.environment.rain = (intensity !== 'clear');
+
+                    await saveGarden();
+                    console.log(`[Garden] Weather Sync: ${intensity} (ID: ${code})`);
+                }
+            } catch (err) {
+                console.error('[Garden] Weather fetch error:', err);
+            }
+        }, (err) => {
+            console.warn('[Garden] Geolocation error:', err.message);
+        }, { timeout: 10000 });
     }
 
     /**
