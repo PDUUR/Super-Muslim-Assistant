@@ -15,6 +15,7 @@ import AdminUsersView from "@/views/AdminUsersView.vue";
 import QiblaView from "@/views/QiblaView.vue";
 import SuperFeaturesView from "@/views/SuperFeaturesView.vue";
 import TikrarView from "@/views/TikrarView.vue";
+import UpdateHistoryView from "@/views/UpdateHistoryView.vue";
 import ErrorView from "@/views/ErrorView.vue";
 import { useAuthStore } from "@/stores/authStore";
 
@@ -141,6 +142,15 @@ const router = createRouter({
       component: BacaSurahQuranView,
       meta: {
         title: "Baca Surah - Super Muslim Assistant",
+      },
+    },
+    {
+      path: "/changelog",
+      name: "Changelog",
+      component: UpdateHistoryView,
+      meta: {
+        title: "Catatan Pembaruan - Super Muslim Assistant",
+        requiresAuth: true
       },
     },
     {

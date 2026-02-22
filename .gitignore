@@ -2,8 +2,9 @@
 # ----------------------------------------------------------------
 
 # Dependencies
-/node_modules
-/.pnp
+node_modules/
+functions/node_modules/
+.pnp
 .pnp.js
 
 # Testing

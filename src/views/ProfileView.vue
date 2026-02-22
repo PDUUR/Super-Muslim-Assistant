@@ -75,6 +75,33 @@
       </div>
 
       <div class="glass rounded-3xl p-6 border border-white/20">
+        <h3 class="font-black text-sm text-slate-800 dark:text-white mb-6 flex items-center gap-3">
+          <div class="w-8 h-8 rounded-xl bg-teal-500/10 text-teal-500 flex items-center justify-center">
+            <i class="fas fa-info-circle text-xs"></i>
+          </div>
+          Informasi Aplikasi
+        </h3>
+        
+        <div class="space-y-3">
+          <button @click="router.push('/changelog')" class="w-full flex items-center justify-between p-4 bg-slate-50 dark:bg-white/5 rounded-2xl border border-slate-100 dark:border-white/5 active:scale-[0.98] transition-all">
+            <div class="flex items-center gap-3">
+              <div class="w-8 h-8 rounded-lg bg-emerald-500/10 text-emerald-500 flex items-center justify-center">
+                <i class="fas fa-history text-xs"></i>
+              </div>
+              <div class="text-left">
+                <p class="text-xs font-black text-slate-800 dark:text-white">Catatan Pembaruan</p>
+                <p class="text-[9px] text-slate-500 dark:text-gray-400 font-bold uppercase tracking-wider">Apa yang baru?</p>
+              </div>
+            </div>
+            <div class="flex items-center gap-2">
+              <span class="text-[9px] px-2 py-0.5 bg-emerald-100 text-emerald-600 rounded-full font-black">v{{ authStore.CURRENT_APP_VERSION }}</span>
+              <i class="fas fa-chevron-right text-slate-300 text-[10px]"></i>
+            </div>
+          </button>
+        </div>
+      </div>
+
+      <div class="glass rounded-3xl p-6 border border-white/20">
         <h3 class="font-black text-sm text-red-500 mb-6 flex items-center gap-3">
           <div class="w-8 h-8 rounded-xl bg-red-500/10 text-red-500 flex items-center justify-center">
             <i class="fas fa-sign-out-alt text-xs"></i>

@@ -41,6 +41,27 @@ export const useAuthStore = defineStore('auth', () => {
     const isLoading = ref(false)
     const error = ref(null)
     const isInitialized = ref(false)
+    const hasNewUpdate = ref(false)
+
+    const CURRENT_APP_VERSION = '1.1.0'
+    const NEW_FEATURES = [
+        {
+            title: 'Baca Al-Qur\'an Jadi Lebih Tenang',
+            description: 'Saya sudah perbaiki masalah layar yang suka melompat-lompat sendiri saat kamu pindah surah. Sekarang, setiap buka surah baru, tampilannya akan selalu mulai rapi dari ayat pertama.'
+        },
+        {
+            title: 'Fokus Ibadah Tanpa Gangguan',
+            description: 'Banyak yang bilang pengingat sedekah yang muncul setiap 3 menit agak mengganggu konsentrasi, jadi fitur itu sudah saya hapus total. Sekarang kamu bisa lebih tenang menjelajahi fitur lainnya.'
+        },
+        {
+            title: 'Papan Pejuang Sejati',
+            description: 'Leaderboard sekarang lebih adil! Hanya kamu yang sudah mulai mengumpulkan XP yang akan muncul di sana. Saya juga tambahkan kategori \'Top Mingguan\' supaya kita bisa sama-sama lihat siapa yang paling semangat setiap minggunya.'
+        },
+        {
+            title: 'Sapaan Update Baru',
+            description: 'Sekarang, setiap kali saya selesai menambahkan fitur baru atau memperbaiki sesuatu, akan ada pesan ramah seperti ini yang menyapamu. Jadi kamu nggak akan ketinggalan info lagi!'
+        }
+    ]
 
     // Listener unsubscribe function
     let unsubscribeProfile = null
@@ -120,6 +141,9 @@ export const useAuthStore = defineStore('auth', () => {
                             })
                         }
 
+                        // Check Version
+                        checkVersion(data)
+
                         // Cache handling
                         localStorage.setItem('auth_profile_cache', JSON.stringify(profile.value))
                     }
@@ -128,6 +152,7 @@ export const useAuthStore = defineStore('auth', () => {
             } else {
                 user.value = null
                 profile.value = null
+                hasNewUpdate.value = false
                 if (unsubscribeProfile) unsubscribeProfile()
                 localStorage.removeItem('auth_profile_cache')
             }
@@ -137,6 +162,33 @@ export const useAuthStore = defineStore('auth', () => {
         })
 
 
+    }
+
+    /**
+     * Check if user has seen the latest version
+     */
+    const checkVersion = (userProfile) => {
+        if (!userProfile) return
+        const lastSeen = userProfile.lastSeenVersion || '0.0.0'
+        if (CURRENT_APP_VERSION > lastSeen) {
+            hasNewUpdate.value = true
+        } else {
+            hasNewUpdate.value = false
+        }
+    }
+
+    /**
+     * Update user's lastSeenVersion to CURRENT_APP_VERSION
+     */
+    const updateUserVersion = async () => {
+        try {
+            await updateProfile({
+                lastSeenVersion: CURRENT_APP_VERSION
+            })
+            hasNewUpdate.value = false
+        } catch (err) {
+            console.error('[Auth] Failed to update version:', err)
+        }
     }
 
     /**
@@ -331,5 +383,10 @@ export const useAuthStore = defineStore('auth', () => {
         refreshProfile,
         resetPassword,
         updateOnlineStatus,
+        checkVersion,
+        updateUserVersion,
+        hasNewUpdate,
+        CURRENT_APP_VERSION,
+        NEW_FEATURES
     }
 })
