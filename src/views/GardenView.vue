@@ -29,7 +29,7 @@ const getTreeAsset = () => {
 }
 
 const envEffects = computed(() => gardenStore.gardenData.environment)
-const weatherType = computed(() => envEffects.value.weatherIntensity || 'clear')
+const weatherType = computed(() => envEffects.value.weatherData?.intensity || 'clear')
 
 // Helper: Feedback text
 const feedbackText = computed(() => {

@@ -35,7 +35,10 @@ export const useGardenStore = defineStore('garden', () => {
             butterflies: false,
             fireflies: false,
             goldenFruit: false,
-            weatherIntensity: 'clear' // heavy, light, clear
+            weatherData: {
+                intensity: 'clear',
+                lastUpdated: null // Timestamp ms
+            }
         },
         lastWatered: null, // Timestamp
         lastMaintenanceDate: null // Tanggal pemeliharaan terakhir (YYYY-MM-DD)
@@ -94,8 +97,17 @@ export const useGardenStore = defineStore('garden', () => {
             // Pantau Kesehatan Ibadah (Maintenance)
             await monitorHealthDiscipline()
 
-            // Sinkronisasi Cuaca Berdasarkan Geolocation
-            await syncWeatherSensor()
+            // Sinkronisasi Cuaca (30 Mins Cache Logic)
+            const weather = gardenData.value.environment.weatherData
+            const now = Date.now()
+            const staleTime = 30 * 60 * 1000 // 30 menit
+
+            if (!weather || !weather.lastUpdated || (now - weather.lastUpdated > staleTime)) {
+                console.log('[Garden] Weather is stale or missing. Syncing...')
+                await syncWeatherSensor()
+            } else {
+                console.log('[Garden] Weather is fresh. Using cached data.')
+            }
 
             // Evaluasi Environment Effects saat load
             evaluateEnvironment()
@@ -224,54 +236,64 @@ export const useGardenStore = defineStore('garden', () => {
 
     /**
      * Sinkronisasi Cuaca dari Geolocation & API (Stasiun Meteorologi Pribadi)
+     * Kunci sinkronisasi State (Single Source of Truth)
      */
     const syncWeatherSensor = async () => {
         if (!navigator.geolocation) {
             console.warn('[Garden] Geolocation tidak didukung');
+            gardenData.value.environment.weatherData = { intensity: 'clear', lastUpdated: Date.now() };
+            await saveGarden();
             return;
         }
 
-        // Gunakan timeout untuk koordinat agar tidak membeku jika diblokir
-        navigator.geolocation.getCurrentPosition(async (pos) => {
-            const { latitude, longitude } = pos.coords;
+        return new Promise((resolve) => {
+            navigator.geolocation.getCurrentPosition(async (pos) => {
+                const { latitude, longitude } = pos.coords;
 
-            try {
-                // Catatan: Disarankan menggunakan environment variable VITE_WEATHER_API_KEY
-                // Untuk demo, kita asumsikan sensor terhubung ke OpenWeatherMap
-                const apiKey = '85e0bf595449755b46e3989c670a59ed'; // Harap ganti dengan key valid
-                const res = await fetch(`https://api.openweathermap.org/data/2.5/weather?lat=${latitude}&lon=${longitude}&appid=${apiKey}`);
-                const data = await res.json();
+                try {
+                    const apiKey = '85e0bf595449755b46e3989c670a59ed';
+                    const res = await fetch(`https://api.openweathermap.org/data/2.5/weather?lat=${latitude}&lon=${longitude}&appid=${apiKey}`);
+                    const data = await res.json();
 
-                if (data.weather && data.weather[0]) {
-                    const code = data.weather[0].id;
-                    let intensity = 'clear';
+                    if (data.weather && data.weather[0]) {
+                        const code = data.weather[0].id;
+                        let intensity = 'clear';
 
-                    // MAPPING LOGIC (Sesuai Ketentuan)
-                    if ([502, 503, 504, 522].includes(code)) {
-                        intensity = 'heavy';
-                    } else if ((code >= 500 && code <= 501) || (code >= 300 && code <= 321)) {
-                        intensity = 'light';
-                    } else if (code === 800) {
-                        intensity = 'clear';
-                    } else if (code > 800) {
-                        // Fallback: Cloudy dll dianggap clear tapi bisa dikembangkan
-                        intensity = 'clear';
+                        // MAPPING LOGIC (Sesuai Ketentuan User)
+                        // Heavy Rain: 502, 503, 504, 522, 201, 202
+                        if ([502, 503, 504, 522, 201, 202].includes(code)) {
+                            intensity = 'heavy';
+                        }
+                        // Light Rain/Drizzle: 500, 501, 300-321
+                        else if ((code >= 500 && code <= 501) || (code >= 300 && code <= 321)) {
+                            intensity = 'light';
+                        }
+                        // Clear: Selain di atas (termasuk Clouds > 800)
+
+                        gardenData.value.environment.weatherData = {
+                            intensity,
+                            lastUpdated: Date.now()
+                        };
+
+                        // Sinkronkan rain basic effect
+                        gardenData.value.environment.rain = (intensity !== 'clear');
+
+                        await saveGarden();
+                        console.log(`[Garden] Weather Update: ${intensity} (ID: ${code})`);
                     }
-
-                    gardenData.value.environment.weatherIntensity = intensity;
-
-                    // Jika hujan (heavy/light), aktifkan efek rain dasar
-                    gardenData.value.environment.rain = (intensity !== 'clear');
-
-                    await saveGarden();
-                    console.log(`[Garden] Weather Sync: ${intensity} (ID: ${code})`);
+                } catch (err) {
+                    console.error('[Garden] Weather fetch error:', err);
+                } finally {
+                    resolve();
                 }
-            } catch (err) {
-                console.error('[Garden] Weather fetch error:', err);
-            }
-        }, (err) => {
-            console.warn('[Garden] Geolocation error:', err.message);
-        }, { timeout: 10000 });
+            }, (err) => {
+                console.warn('[Garden] Geolocation error:', err.message);
+                // Fallback ke Clear jika izin ditolak atau error
+                gardenData.value.environment.weatherData = { intensity: 'clear', lastUpdated: Date.now() };
+                saveGarden();
+                resolve();
+            }, { timeout: 10000 });
+        });
     }
 
     /**
