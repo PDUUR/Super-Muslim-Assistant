@@ -16,6 +16,7 @@ import { defineStore } from 'pinia'
 import { ref, computed, watch } from 'vue'
 import { useAuthStore } from './authStore'
 import { useIbadahStore } from './ibadahStore'
+import { useNotificationStore } from './notificationStore'
 import { db } from '@/firebase/config'
 import { doc, getDoc, setDoc, updateDoc, serverTimestamp } from 'firebase/firestore'
 
@@ -35,10 +36,12 @@ export const useGardenStore = defineStore('garden', () => {
             fireflies: false,
             goldenFruit: false
         },
-        lastWatered: null // Timestamp
+        lastWatered: null, // Timestamp
+        lastMaintenanceDate: null // Tanggal pemeliharaan terakhir (YYYY-MM-DD)
     })
-    
+
     const isLoading = ref(false)
+    const notificationStore = useNotificationStore()
 
     // ===== CONSTANTS =====
     const LEVELS = {
@@ -75,7 +78,7 @@ export const useGardenStore = defineStore('garden', () => {
     const initialize = async () => {
         if (!authStore.userId) return
         isLoading.value = true
-        
+
         try {
             const gardenRef = doc(db, "users", authStore.userId, "private_data", "garden")
             const snap = await getDoc(gardenRef)
@@ -86,7 +89,10 @@ export const useGardenStore = defineStore('garden', () => {
                 // Initialize new garden
                 await saveGarden()
             }
-            
+
+            // Pantau Kesehatan Ibadah (Maintenance)
+            await monitorHealthDiscipline()
+
             // Evaluasi Environment Effects saat load
             evaluateEnvironment()
         } catch (err) {
@@ -118,7 +124,7 @@ export const useGardenStore = defineStore('garden', () => {
         // Clamp 0-100
         const newHealth = Math.min(100, Math.max(0, gardenData.value.treeHealth + delta))
         gardenData.value.treeHealth = newHealth
-        
+
         await saveGarden()
         return message
     }
@@ -141,13 +147,85 @@ export const useGardenStore = defineStore('garden', () => {
     }
 
     /**
+     * Memantau kedisiplinan ibadah (Maintenance Logic)
+     * - Severe Dehydration: -80% per hari absen
+     * - Nutrient Deficiency: -10% jika sholat tidak lengkap pada login terakhir
+     */
+    const monitorHealthDiscipline = async () => {
+        // Pastikan dailyLogs sudah tersinkronisasi
+        if (!ibadahStore.lastLoginDate) {
+            await ibadahStore.syncWithBackend()
+        }
+
+        const todayKey = ibadahStore.getTodayKey()
+        const lastDateKey = gardenData.value.lastMaintenanceDate
+
+        // Kasus: User baru atau belum pernah ada maintenance record
+        if (!lastDateKey) {
+            gardenData.value.lastMaintenanceDate = todayKey
+            await saveGarden()
+            return
+        }
+
+        // Jika sudah diproses hari ini, lewati
+        if (lastDateKey === todayKey) return
+
+        let penalty = 0
+        let isDehydrated = false
+        let isNutrientDeficit = false
+
+        // 1. ANALOGI DEHIDRASI BERAT (Absen Login)
+        const lastDate = new Date(lastDateKey)
+        const today = new Date()
+
+        // Normalisasi jam ke 00:00 agar perbandingan tanggal murni
+        lastDate.setHours(0, 0, 0, 0)
+        today.setHours(0, 0, 0, 0)
+
+        const diffTime = today - lastDate
+        const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24))
+
+        if (diffDays > 1) {
+            const missedDays = diffDays - 1
+            penalty += missedDays * 80
+            isDehydrated = true
+        }
+
+        // 2. ANALOGI DEFISIENSI NUTRISI (Sholat Tidak Lengkap di hari login terakhir)
+        const prevLogs = ibadahStore.dailyLogs[lastDateKey] || []
+        const mandatory = ['subuh', 'dzuhur', 'ashar', 'maghrib', 'isya']
+        const isComplete = mandatory.every(s => prevLogs.includes(s))
+
+        if (!isComplete) {
+            penalty += 10
+            isNutrientDeficit = true
+        }
+
+        // Terapkan penalti jika ada
+        if (penalty > 0) {
+            const oldHealth = gardenData.value.treeHealth
+            gardenData.value.treeHealth = Math.max(0, gardenData.value.treeHealth - penalty)
+
+            // Kirim notifikasi jika penurunan drastis
+            if (isDehydrated || (isNutrientDeficit && oldHealth > 20)) {
+                // Trigger notifikasi jika mendukung format custom
+                console.log(`[Garden] Health dropped by ${penalty}% due to discipline maintenance.`)
+            }
+        }
+
+        // Update tanggal maintenance terakhir ke hari ini
+        gardenData.value.lastMaintenanceDate = todayKey
+        await saveGarden()
+    }
+
+    /**
      * Evaluasi Environment Effects
      * "Rainmaker", "Butterfly", "Night Owl", "Golden Fruit"
      */
     const evaluateEnvironment = () => {
         const streak = ibadahStore.currentStreak
         const hour = new Date().getHours()
-        
+
         // 1. Rainmaker (Streak Sholat 3 hari)
         gardenData.value.environment.rain = streak >= 3
 
@@ -196,7 +274,7 @@ export const useGardenStore = defineStore('garden', () => {
     watch(() => ibadahStore.totalXP, (newXp) => {
         checkLevelUp(newXp)
     })
-    
+
     watch(() => ibadahStore.todayLog, () => {
         evaluateEnvironment()
         saveGarden() // Auto save environment changes
