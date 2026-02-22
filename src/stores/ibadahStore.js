@@ -93,10 +93,19 @@ export const useIbadahStore = defineStore('ibadah', () => {
     ];
 
     // ===== HELPERS =====
-    const getTodayKey = () => new Date().toISOString().split('T')[0];
+    const getTodayKey = () => {
+        const d = new Date();
+        const year = d.getFullYear();
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    };
     const getDateKey = (date) => {
         const d = new Date(date);
-        return d.toISOString().split('T')[0];
+        const year = d.getFullYear();
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
     };
     const calculateLevel = (xp) => Math.floor(xp / 100) + 1;
     const totalLogCount = (ibadahId) => {

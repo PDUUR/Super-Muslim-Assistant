@@ -28,40 +28,12 @@ const showResult = ref(false);       // Tampilkan hasil jawaban
 const lastResult = ref(null);        // 'correct' atau 'wrong'
 const roundNumber = ref(0);          // Nomor ronde (siklus antrean ke-N)
 
-// ─── Speech Recognition (Hugging Face API) ────────────────────
+// ─── Speech Recognition (Web Speech API) ──────────────────────
 const isListening = ref(false);
-const isRecording = ref(false);
-const isTranscribing = ref(false);
 const speechText = ref('');
 const speechAccuracy = ref(null);
-const recordingDuration = ref(0); // Durasi rekaman dalam detik
-let mediaRecorder = null;
-let audioChunks = [];
-let currentStream = null;        // Referensi stream mikrofon
-let recordingTimer = null;       // Timer hitung durasi rekaman
-
-// Model khusus bacaan Al-Qur'an (diproses di serverless proxy)
-const HF_MODEL = 'tarteel-ai/whisper-base-ar-quran';
-const HF_MODEL_FALLBACK = 'openai/whisper-large-v3';
-// Token tersimpan aman di server (process.env.HUGGINGFACE_TOKEN)
-
-// Deteksi MIME type yang didukung browser
-function getSupportedMimeType() {
-  const types = [
-    'audio/webm;codecs=opus',
-    'audio/webm',
-    'audio/ogg;codecs=opus',
-    'audio/ogg',
-    'audio/mp4',
-    'audio/wav',
-  ];
-  for (const type of types) {
-    if (MediaRecorder.isTypeSupported(type)) {
-      return type;
-    }
-  }
-  return ''; // Biarkan browser memilih default
-}
+const userSpeech = ref('');
+let recognition = null;
 
 // ─── Hint System ───────────────────────────────────────────────
 const showHint = ref(false);
@@ -100,36 +72,37 @@ const progressPercent = computed(() => {
 });
 
 const maskedAyahText = computed(() => {
-  if (!currentAyah.value) return '';
+  if (!currentAyah.value) return { visible: '', hidden: '', hiddenActual: '' };
   const fullText = currentAyah.value.teksArab;
   const words = fullText.split(' ');
 
   if (currentLevel.value === 1) {
-    // Level 1: Sembunyikan ~30% kata terakhir
-    const hideCount = Math.max(1, Math.ceil(words.length * 0.3));
-    const visibleWords = words.slice(0, words.length - hideCount);
-    const hiddenWords = words.slice(words.length - hideCount);
+    // Level 1: Sembunyikan 1 kata terakhir
+    const visibleWords = words.slice(0, words.length - 1);
+    const hiddenWords = words.slice(words.length - 1);
     return {
       visible: visibleWords.join(' '),
-      hidden: hiddenWords.map(() => '‎●●●').join(' '),
+      hidden: '●●●',
       hiddenActual: hiddenWords.join(' ')
     };
   } else if (currentLevel.value === 2) {
-    // Level 2: Sembunyikan ~60% kata
-    const hideCount = Math.max(1, Math.ceil(words.length * 0.6));
+    // Level 2: Sembunyikan setengah bagian terakhir
+    const hideCount = Math.floor(words.length / 2);
     const visibleWords = words.slice(0, words.length - hideCount);
     const hiddenWords = words.slice(words.length - hideCount);
     return {
       visible: visibleWords.join(' '),
-      hidden: hiddenWords.map(() => '‎●●●').join(' '),
+      hidden: hiddenWords.map(() => '●●●').join(' '),
       hiddenActual: hiddenWords.join(' ')
     };
   } else {
-    // Level 3: Sembunyikan seluruh teks
+    // Level 3: Sembunyikan seluruh ayat (kecuali 2 kata pertama)
+    const visibleWords = words.slice(0, 2);
+    const hiddenWords = words.slice(2);
     return {
-      visible: '',
-      hidden: words.map(() => '‎●●●').join(' '),
-      hiddenActual: fullText
+      visible: visibleWords.join(' '),
+      hidden: hiddenWords.map(() => '●●●').join(' '),
+      hiddenActual: hiddenWords.join(' ')
     };
   }
 });
@@ -266,277 +239,111 @@ function answerWrong() {
   checkAnswer(false);
 }
 
-// ─── Kirim Audio ke Vercel Serverless Proxy (/api/huggingface) ──
-async function transcribeAudio(audioBlob, model) {
-  const selectedModel = model || HF_MODEL;
-  // Kirim ke proxy serverless (same-origin, tidak ada CORS!)
-  const proxyUrl = `/api/huggingface?model=${encodeURIComponent(selectedModel)}`;
-
-  try {
-    const response = await fetch(proxyUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': audioBlob.type || 'audio/webm',
-      },
-      body: audioBlob, // Kirim blob langsung sebagai binary body
-      signal: AbortSignal.timeout(60000), // Timeout 60 detik (termasuk cold start)
-    });
-
-    const result = await response.json().catch(() => ({}));
-
-    // Model sedang loading (cold start) — HTTP 503
-    if (response.status === 503) {
-      const wait = result.estimated_time || 30;
-      errorMessage.value = `⏳ Model AI sedang dipersiapkan (~${wait} detik). Tunggu sebentar lalu coba lagi.`;
-      setTimeout(() => errorMessage.value = '', 8000);
-      return '';
-    }
-
-    // Error dari proxy atau HuggingFace
-    if (!response.ok || result.error) {
-      console.error('[Proxy] Error:', response.status, result);
-
-      // Fallback ke Whisper umum jika model Qur'an gagal
-      if (selectedModel !== HF_MODEL_FALLBACK) {
-        console.warn('[Proxy] Model Qur\'an gagal, mencoba fallback...');
-        return await transcribeAudio(audioBlob, HF_MODEL_FALLBACK);
-      }
-
-      errorMessage.value = `Error: ${result.error || 'Gagal memproses'}. Coba lagi.`;
-      setTimeout(() => errorMessage.value = '', 5000);
-      return '';
-    }
-
-    console.log('[Proxy] Transkripsi berhasil:', result.text);
-    return result.text || '';
-  } catch (error) {
-    if (error.name === 'TimeoutError' || error.name === 'AbortError') {
-      errorMessage.value = 'Waktu habis. Periksa koneksi internet.';
-    } else {
-      errorMessage.value = 'Gagal menghubungi server. Pastikan koneksi internet aktif.';
-    }
-    console.error('[Proxy] Fetch Error:', error);
-    setTimeout(() => errorMessage.value = '', 5000);
-    return '';
-  }
+// ─── Normalize Arabic ──────────────────────────────────────────
+function normalizeArabic(text) {
+  if (!text) return '';
+  return text
+    .replace(/[\u064B-\u065F\u0670\u06D6-\u06DC\u06DF-\u06E4\u06E7\u06E8\u06EA-\u06ED]/g, '') // Hapus harakat
+    .replace(/[أإآ]/g, 'ا') // Normalisasi Alif
+    .replace(/ة/g, 'ه')   // Normalisasi Ta Marbuta
+    .replace(/ى/g, 'ي')   // Normalisasi Alif Maqsura
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
-// ─── Mulai Rekam (Klik/Tekan Tombol) ─────────────────────────
-async function startListening() {
-  if (isListening.value || isTranscribing.value) return;
-
-  // Reset state
-  speechText.value = '';
-  speechAccuracy.value = null;
-  errorMessage.value = '';
-  audioChunks = [];
-  recordingDuration.value = 0;
-
-  // Step 1: Minta izin mikrofon
-  try {
-    currentStream = await navigator.mediaDevices.getUserMedia({ 
-      audio: {
-        channelCount: 1,        // Mono (lebih kecil ukurannya)
-        sampleRate: 16000,      // 16kHz cukup untuk speech
-        echoCancellation: true,
-        noiseSuppression: true,
-      }
-    });
-  } catch (error) {
-    console.error('[Mic] Gagal akses mikrofon:', error);
-    if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
-      errorMessage.value = '🎙️ Izin mikrofon ditolak. Klik ikon gembok di address bar browser untuk mengizinkan.';
-    } else if (error.name === 'NotFoundError') {
-      errorMessage.value = '🎙️ Mikrofon tidak ditemukan. Pastikan perangkat memiliki mikrofon.';
-    } else {
-      errorMessage.value = '🎙️ Tidak dapat mengakses mikrofon. Coba lagi.';
-    }
-    setTimeout(() => errorMessage.value = '', 6000);
-    return;
-  }
-
-  // Step 2: Setup MediaRecorder dengan MIME type yang didukung
-  try {
-    const mimeType = getSupportedMimeType();
-    const options = mimeType ? { mimeType } : {};
-    console.log('[Recorder] MIME type:', mimeType || 'browser default');
-
-    mediaRecorder = new MediaRecorder(currentStream, options);
-
-    mediaRecorder.ondataavailable = (event) => {
-      if (event.data && event.data.size > 0) {
-        audioChunks.push(event.data);
-      }
-    };
-
-    // Step 3: Saat rekaman dihentikan → kirim ke API 
-    mediaRecorder.onstop = async () => {
-      // Bersihkan timer durasi
-      if (recordingTimer) {
-        clearInterval(recordingTimer);
-        recordingTimer = null;
-      }
-
-      // Hentikan semua track mikrofon (ikon merah di browser hilang)
-      if (currentStream) {
-        currentStream.getTracks().forEach(track => track.stop());
-        currentStream = null;
-      }
-
-      isRecording.value = false;
-
-      // Cek apakah ada data yang terekam
-      if (audioChunks.length === 0) {
-        errorMessage.value = 'Tidak ada audio yang terekam. Coba lagi.';
-        setTimeout(() => errorMessage.value = '', 4000);
-        isListening.value = false;
-        return;
-      }
-
-      // Step 4: Buat Blob dari chunks
-      const recordedMime = mediaRecorder.mimeType || mimeType || 'audio/webm';
-      const audioBlob = new Blob(audioChunks, { type: recordedMime });
-      console.log('[Recorder] Audio blob:', audioBlob.size, 'bytes,', recordedMime);
-
-      // Cek ukuran minimun (terlalu kecil = tidak ada suara)
-      if (audioBlob.size < 1000) {
-        errorMessage.value = 'Rekaman terlalu pendek. Tahan tombol lebih lama saat membaca.';
-        setTimeout(() => errorMessage.value = '', 4000);
-        isListening.value = false;
-        return;
-      }
-
-      // Step 5: Kirim ke Hugging Face & tampilkan status loading
-      isTranscribing.value = true;
-      try {
-        const transcription = await transcribeAudio(audioBlob);
-
-        if (transcription && transcription.trim()) {
-          speechText.value = transcription.trim();
-          const accuracy = compareSpeechToText(transcription, currentAyah.value.teksArab);
-          speechAccuracy.value = Math.round(accuracy);
-
-          if (accuracy >= 80) {
-            checkAnswer(true);
-          } else {
-            checkAnswer(false);
-          }
-        } else if (!errorMessage.value) {
-          errorMessage.value = 'Suara tidak terdeteksi. Pastikan membaca dengan jelas.';
-          setTimeout(() => errorMessage.value = '', 4000);
-        }
-      } finally {
-        isTranscribing.value = false;
-        isListening.value = false;
-      }
-    };
-
-    // Mulai merekam! (timeslice 250ms agar data terus mengalir)
-    mediaRecorder.start(250);
-    isRecording.value = true;
-    isListening.value = true;
-
-    // Hitung durasi rekaman
-    recordingTimer = setInterval(() => {
-      recordingDuration.value++;
-    }, 1000);
-
-    console.log('[Recorder] Mulai merekam...');
-  } catch (error) {
-    console.error('[Recorder] Setup error:', error);
-    errorMessage.value = 'Gagal memulai perekaman. Coba refresh halaman.';
-    setTimeout(() => errorMessage.value = '', 5000);
-    // Bersihkan stream jika ada
-    if (currentStream) {
-      currentStream.getTracks().forEach(track => track.stop());
-      currentStream = null;
-    }
-    isListening.value = false;
-    isRecording.value = false;
-  }
-}
-
-// ─── Berhenti Rekam ─────────────────────────────────────────
-function stopListening() {
-  if (mediaRecorder && mediaRecorder.state === 'recording') {
-    try {
-      mediaRecorder.stop(); // Akan memicu onstop → proses API
-    } catch (e) {
-      console.error('[Recorder] Stop error:', e);
-      // Bersihkan semuanya secara manual
-      if (currentStream) {
-        currentStream.getTracks().forEach(track => track.stop());
-        currentStream = null;
-      }
-      if (recordingTimer) {
-        clearInterval(recordingTimer);
-        recordingTimer = null;
-      }
-      isListening.value = false;
-      isRecording.value = false;
-      isTranscribing.value = false;
-    }
-  }
-}
-
-// ─── Bersihkan resource saat komponen dihancurkan ────────────
-function cleanupRecording() {
-  if (mediaRecorder && mediaRecorder.state === 'recording') {
-    mediaRecorder.stop();
-  }
-  if (currentStream) {
-    currentStream.getTracks().forEach(track => track.stop());
-    currentStream = null;
-  }
-  if (recordingTimer) {
-    clearInterval(recordingTimer);
-    recordingTimer = null;
-  }
-}
-
-// ─── Compare Speech to Text (Levenshtein-based similarity) ─────
+// ─── Fuzzy Matching (Levenshtein) ─────────────────────────────
 function compareSpeechToText(inputTeks, originalTeks) {
-  // Normalisasi: hapus diacritics/harakat Arab dan whitespace ekstra
-  const normalize = (str) => {
-    return str
-      .replace(/[\u064B-\u065F\u0670\u06D6-\u06DC\u06DF-\u06E4\u06E7\u06E8\u06EA-\u06ED]/g, '') // Hapus harakat
-      .replace(/\s+/g, ' ')
-      .trim();
-  };
-
-  const a = normalize(inputTeks);
-  const b = normalize(originalTeks);
+  const a = normalizeArabic(inputTeks);
+  const b = normalizeArabic(originalTeks);
 
   if (a === b) return 100;
-  if (a.length === 0 || b.length === 0) return 0;
+  if (!a || !b) return 0;
 
-  // Levenshtein distance
-  const matrix = [];
-  for (let i = 0; i <= a.length; i++) {
-    matrix[i] = [i];
-  }
-  for (let j = 0; j <= b.length; j++) {
-    matrix[0][j] = j;
-  }
+  const matrix = Array.from({ length: a.length + 1 }, (_, i) => [i]);
+  for (let j = 0; j <= b.length; j++) matrix[0][j] = j;
+
   for (let i = 1; i <= a.length; i++) {
     for (let j = 1; j <= b.length; j++) {
-      if (a[i - 1] === b[j - 1]) {
-        matrix[i][j] = matrix[i - 1][j - 1];
-      } else {
-        matrix[i][j] = Math.min(
-          matrix[i - 1][j - 1] + 1, // substitution
-          matrix[i][j - 1] + 1,     // insertion
-          matrix[i - 1][j] + 1      // deletion
-        );
-      }
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      matrix[i][j] = Math.min(
+        matrix[i - 1][j] + 1,
+        matrix[i][j - 1] + 1,
+        matrix[i - 1][j - 1] + cost
+      );
     }
   }
 
   const maxLen = Math.max(a.length, b.length);
-  const distance = matrix[a.length][b.length];
-  const similarity = ((maxLen - distance) / maxLen) * 100;
+  return ((maxLen - matrix[a.length][b.length]) / maxLen) * 100;
+}
 
-  return similarity;
+// ─── Speech Recognition Logic ─────────────────────────────────
+function initSpeechRecognition() {
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRecognition) {
+    console.warn('Speech Recognition not supported in this browser.');
+    return;
+  }
+
+  recognition = new SpeechRecognition();
+  recognition.lang = 'ar-SA';
+  recognition.interimResults = false;
+  recognition.maxAlternatives = 1;
+
+  recognition.onstart = () => {
+    isListening.value = true;
+    errorMessage.value = '';
+  };
+
+  recognition.onresult = (event) => {
+    const transcript = event.results[0][0].transcript;
+    userSpeech.value = transcript;
+    speechText.value = transcript;
+    
+    const accuracy = compareSpeechToText(transcript, currentAyah.value.teksArab);
+    speechAccuracy.value = Math.round(accuracy);
+    
+    if (accuracy >= 80) {
+      checkAnswer(true);
+    } else {
+      checkAnswer(false);
+    }
+  };
+
+  recognition.onerror = (event) => {
+    console.error('[Speech] Error:', event.error);
+    isListening.value = false;
+    if (event.error === 'not-allowed') {
+      errorMessage.value = '🎙️ Izin mikrofon ditolak.';
+    } else if (event.error === 'no-speech') {
+      errorMessage.value = '🎙️ Suara tidak terdengar. Coba lagi.';
+    } else {
+      errorMessage.value = `🎙️ Error: ${event.error}. Coba lagi.`;
+    }
+    setTimeout(() => errorMessage.value = '', 4000);
+  };
+
+  recognition.onend = () => {
+    isListening.value = false;
+  };
+}
+
+function startListening() {
+  if (!recognition) {
+    errorMessage.value = 'Browser ini tidak mendukung fitur rekam suara.';
+    return;
+  }
+  if (isListening.value) return;
+
+  speechText.value = '';
+  speechAccuracy.value = null;
+  
+  try {
+    recognition.start();
+  } catch (error) {
+    console.error('[Speech] Start error:', error);
+    isListening.value = false;
+  }
 }
 
 // ─── Reset Game ─────────────────────────────────────────────────
@@ -557,17 +364,13 @@ function resetGame() {
 
 // ─── Lifecycle ──────────────────────────────────────────────────
 onMounted(() => {
-  // Cek apakah browser mendukung MediaRecorder
-  if (!window.MediaRecorder) {
-    console.warn('[Tikrar] MediaRecorder tidak didukung di browser ini.');
-  }
-  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-    console.warn('[Tikrar] getUserMedia tidak didukung.');
-  }
+  initSpeechRecognition();
 });
 
 onUnmounted(() => {
-  cleanupRecording();
+  if (recognition) {
+    recognition.abort();
+  }
 });
 
 // Watch surah selection
@@ -797,38 +600,27 @@ watch(selectedSurahId, async (newId) => {
 
         <!-- Speech Recognition Button: Tekan & Tahan untuk merekam -->
         <button
-          @mousedown.prevent="startListening"
-          @mouseup.prevent="stopListening"
-          @mouseleave="isRecording ? stopListening() : null"
-          @touchstart.prevent="startListening"
-          @touchend.prevent="stopListening"
-          :disabled="isTranscribing"
+          @click="startListening"
+          :disabled="isListening"
           :class="[
-            isTranscribing 
-              ? 'bg-amber-500 shadow-amber-500/30 cursor-wait'
-              : isRecording
-                ? 'bg-red-500 shadow-red-500/30 ring-4 ring-red-500/20 animate-pulse'
-                : 'bg-gradient-to-r from-blue-500 to-cyan-500 shadow-blue-500/30 hover:shadow-xl'
+            isListening 
+              ? 'bg-red-500 shadow-red-500/30 ring-4 ring-red-500/20 animate-pulse'
+              : 'bg-gradient-to-r from-blue-500 to-cyan-500 shadow-blue-500/30 hover:shadow-xl'
           ]"
           class="w-full text-white font-black py-4 px-6 rounded-2xl shadow-lg transition-all active:scale-95 text-sm uppercase tracking-widest select-none"
         >
           <i :class="[
-            isTranscribing ? 'fas fa-spinner animate-spin'
-              : isRecording ? 'fas fa-circle text-red-200 animate-pulse'
-              : 'fas fa-microphone'
+            isListening ? 'fas fa-microphone-alt animate-bounce' : 'fas fa-microphone'
           ]" class="mr-2"></i>
-          <template v-if="isTranscribing">
-            Memproses suara...
-          </template>
-          <template v-else-if="isRecording">
-            🔴 Merekam... ({{ recordingDuration }}s) — Lepas untuk kirim
+          <template v-if="isListening">
+            🔴 Sedang Mendengarkan...
           </template>
           <template v-else>
-            🎙️ Tekan & Tahan untuk Merekam
+            🎙️ Mulai Rekam & Periksa
           </template>
         </button>
-        <p v-if="!isListening && !isTranscribing" class="text-[10px] text-center text-slate-400 dark:text-gray-500 mt-1">
-          Tahan tombol selama membaca ayat, lalu lepaskan.
+        <p v-if="!isListening" class="text-[10px] text-center text-slate-400 dark:text-gray-500 mt-1">
+          Klik tombol, bacakan ayat, lalu tunggu hasil pemeriksaan otomatis.
         </p>
 
         <!-- Manual Check Buttons -->
@@ -954,21 +746,21 @@ watch(selectedSurahId, async (newId) => {
             <i class="fas fa-seedling text-emerald-500"></i>
             <div>
               <p class="text-xs font-black text-emerald-700 dark:text-emerald-400">Level 1 — Pemula</p>
-              <p class="text-[10px] text-slate-400">30% teks disembunyikan</p>
+              <p class="text-[10px] text-slate-400">Sembunyikan 1 kata terakhir</p>
             </div>
           </div>
           <div class="flex items-center gap-3 bg-amber-50 dark:bg-amber-500/5 p-3 rounded-xl border border-amber-500/20">
             <i class="fas fa-fire text-amber-500"></i>
             <div>
               <p class="text-xs font-black text-amber-700 dark:text-amber-400">Level 2 — Menengah</p>
-              <p class="text-[10px] text-slate-400">60% teks disembunyikan</p>
+              <p class="text-[10px] text-slate-400">Sembunyikan setengah bagian terakhir</p>
             </div>
           </div>
           <div class="flex items-center gap-3 bg-purple-50 dark:bg-purple-500/5 p-3 rounded-xl border border-purple-500/20">
             <i class="fas fa-star text-purple-500"></i>
             <div>
               <p class="text-xs font-black text-purple-700 dark:text-purple-400">Level 3 — Mahir</p>
-              <p class="text-[10px] text-slate-400">100% teks disembunyikan</p>
+              <p class="text-[10px] text-slate-400">Tampilkan hanya 2 kata pertama</p>
             </div>
           </div>
         </div>
